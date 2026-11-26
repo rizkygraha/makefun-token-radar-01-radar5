@@ -15,13 +15,17 @@
 //   - maturity and breadth are dropped: neither improves both blind tests over size-only
 //     (maturity improves LOO but worsens walk-forward; breadth worsens both), so their
 //     multipliers are 1.0 and the implied value does not use them.
-//   - the launch odds are a 5-feature logistic (age, growth, chains, category token
-//     rate, intercept). log TVL was tested and removed: dropping it improves both
-//     Brier scores (LOO 0.21129 -> 0.21124, ten-fold 0.21473 -> 0.21387) while AUC
-//     moves 0.7752 -> 0.7745. Category token rate is the strongest feature (weight
-//     +1.09 std). Brier, measured off-line and embedded with its source: LOO 0.211,
-//     ten-fold 0.214, base rate 0.248. The ten-fold Brier misses the plan's gate of
-//     0.21 by 0.004 — stated on the dashboard, not hidden.
+//   - the launch odds are a 6-feature logistic (age, growth, chains, category token
+//     rate, cohort share, intercept). log TVL was tested and removed: dropping it
+//     improves both Brier scores (LOO 0.21129 -> 0.21124, ten-fold 0.21473 ->
+//     0.21387) while AUC moves 0.7752 -> 0.7745. The freed slot carries the cohort
+//     share — the share of protocols in the row's own age band that already carry
+//     a token — which fixes the linear age term's mispricing of age-unknown rows
+//     and brings Brier to LOO 0.197657 and ten-fold 0.200076 (work/odds/
+//     atm-brier-2026-11-26.md; the ten-fold gate of 0.21 now passes). Category
+//     token rate is the strongest feature (weight +1.02 std), cohort share second
+//     (+0.80 std). Brier, measured off-line and embedded with its source: LOO
+//     0.198, ten-fold 0.200, base rate 0.248.
 //   - the value band is built from leave-one-out residuals, not from bootstrap refits:
 //     [p25, p75] of the LOO log-residuals covers 50.0% of held-out caps and [p10, p90]
 //     covers 78.9% on the 76-comparable set (the old bootstrap band covered 15.8% and
@@ -31,7 +35,7 @@
 //   - farm economics are by money, not by rank: a $10,000 deposit, a 7% drop share,
 //     gas from the steps, and a 4% T-bill charge pro-rated over the hold. Drop =
 //     implied x 7% x $10,000 / TVL; net = drop - gas - T-bill; $/hour = net / hours.
-//     FARM = net > 0 and $/hour >= $25; THIN = net > 0; SKIP = net < 0. 47 of 198
+//     FARM = net > 0 and $/hour >= $25; THIN = net > 0; SKIP = net < 0. 59 of 198
 //     rows pay $25/hour; none of the top 10 by implied is a FARM.
 //   - the farm plan is 8 steps (7 from Radar-4 plus an exit trigger: leave when TVL
 //     falls below 70% of today's, or the drop window closes). Total work: 356.5 hours
@@ -75,17 +79,21 @@
 //   growth    = clamp(change_7d, -60, 120) per cent
 //   growthMult = 1 + (growth / 100) x GROWTH_WEIGHT
 //   launchP   = a fitted logistic regression P(has a token | age, growth, chains,
-//               category token rate), fitted at run time by gradient descent on this
-//               snapshot (train on the even-indexed protocols, tested on the odd ones;
-//               AUC reported on the dashboard), clamped to [0.10, 0.85]. The category
-//               token rate is the share of protocols in the protocol's own category
-//               that already carry a token, smoothed (live + 2) / (all + 4): categories
-//               where tokens are the norm launch more often, and the data says so —
-//               adding it lifts the held-out AUC from 0.646 to 0.775. The chance a
-//               protocol like this one launches a token at all: a fitted estimate,
-//               stated, never a promise about any one protocol. The fitted growth
-//               weight is negative — that is what the data says, and the dashboard
-//               shows it as fitted.
+//               category token rate, cohort share), fitted at run time by gradient
+//               descent on this snapshot (train on the even-indexed protocols,
+//               tested on the odd ones; AUC reported on the dashboard), clamped to
+//               [0.10, 0.85]. The category token rate is the share of protocols in
+//               the protocol's own category that already carry a token, smoothed
+//               (live + 2) / (all + 4): categories where tokens are the norm launch
+//               more often, and the data says so. The cohort share is the share of
+//               protocols in the protocol's own age band that already carry a token:
+//               age-unknown rows record one 78.8% of the time, almost like 3+ years
+//               (79.1%), while the linear age term alone would give them age 365
+//               days. Together the six features reach a held-out AUC of 0.8030. The
+//               chance a protocol like this one launches a token at all: a fitted
+//               estimate, stated, never a promise about any one protocol. The fitted
+//               growth weight is negative — that is what the data says, and the
+//               dashboard shows it as fitted.
 //   implied   = max(1, round(base x growthMult x launchP))
 //
 // Uncertainty is shown, not hidden. The curve is refitted 200 times on resamples of the
@@ -100,7 +108,7 @@
 // drop it can earn at a 7% drop share, minus the gas of its steps and the 4% T-bill
 // charge on the deposit over the hold. The verdict is by money: FARM when the net is
 // positive and pays at least $25 an hour, THIN when the net is positive but pays less,
-// SKIP when the net is negative. The net is negative on 106 of 198 rows — a farm costs
+// SKIP when the net is negative. The net is negative on 102 of 198 rows — a farm costs
 // tens of dollars of gas and T-bill charge against a drop that, for the biggest
 // protocols, is smaller than the cost, because the drop is the implied value times
 // the deposit over a very large TVL. The scarce input is time: 356.5 hours for 198
@@ -245,6 +253,10 @@ export interface BoardRow {
     net_per_hour_usd: number;
     breakeven_drop_share: number;
     breakeven_25ph_drop_share: number;
+    /** The launch odds at which the expected net is zero: (gas + T-bill) divided
+     *  by the drop if the token launches. Above 1 the row never breaks even on
+     *  odds alone — even a certain token pays less than the cost. */
+    breakeven_odds: number;
     hours_worked: number;
     hold_days: number;
     verdict: 'FARM' | 'THIN' | 'SKIP';
@@ -287,6 +299,8 @@ export interface RadarRow {
   net_per_hour_usd: number;
   breakeven_drop_share: number;
   breakeven_25ph_drop_share: number;
+  /** The launch odds at which the expected net is zero (see BoardRow.model). */
+  breakeven_odds: number;
   hours_worked: number;
   hold_days: number;
   verdict: 'FARM' | 'THIN' | 'SKIP';
@@ -345,6 +359,14 @@ export interface FitStats {
   brier_loo: number;
   brier_tenfold: number;
   brier_base: number;
+  /** Bootstrap standard errors (200 refits, seeded), measured off-line
+   *  (work/odds/atm-measurements-2026-11-26.json): the curve's intercept and
+   *  slope from resamples of the clean comparables, and the logistic's
+   *  standardized weights from resamples of the 758 rows. */
+  curve_intercept_se: number;
+  curve_slope_se: number;
+  logistic_weights_se_std: number[];
+  logistic_coefs_raw_se: number[];
   record_by_age: { band: string; n: number; recorded: number; share: number }[];
   band_p25: number;
   band_p75: number;
@@ -441,6 +463,17 @@ export function ageDays(asOf: string, listedAt: string | null): number | null {
   const b = Date.parse(`${listedAt}T00:00:00Z`);
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return Math.max(0, Math.floor((a - b) / DAY_MS));
+}
+
+/** A protocol's age band for the cohort share: 0–1 / 1–2 / 2–3 / 3+ years by
+ *  uncapped age, plus 'unk' when listed_at is null. */
+export function ageBand(asOf: string, listedAt: string | null): string {
+  const a = ageDays(asOf, listedAt);
+  if (a === null) return 'unk';
+  if (a < 365) return '0-1';
+  if (a < 730) return '1-2';
+  if (a < 1095) return '2-3';
+  return '3+';
 }
 
 /** DefiLlama's version-marker rule: a name ending in a release is a pool of another protocol. */
@@ -610,9 +643,18 @@ function factorMiss(pred: number, actual: number): number {
 
 // ---------------------------------------------------------------------------
 // The fitted launch probability: logistic regression P(has a token | age, growth,
-// chains, category token rate), fitted by gradient descent at run time.
-// Radar-5: log TVL was tested and removed (work/metrics/ablation.md §6) — dropping it
-// improves both Brier scores while AUC moves 0.7752 -> 0.7745.
+// chains, category token rate, cohort share), fitted by gradient descent at run
+// time. Radar-5 ATM: log TVL was tested and removed (work/metrics/ablation.md
+// §6) — dropping it improves both Brier scores while AUC moves 0.7752 -> 0.7745
+// — and the freed slot carries the cohort share (work/odds/atm-brier-2026-11-26.md):
+// the share of protocols in the row's own age band that already carry a token.
+// The linear age term misprices age-unknown rows (they record a token 78.8% of
+// the time, almost like 3+ years at 79.1%, but get age 365 days); the cohort
+// share fixes that, and the adopted 6-feature model measures Brier LOO 0.197657
+// and ten-fold 0.200076 (base rate 0.247617), with AUC 0.8030 on the odd split —
+// the ten-fold gate of 0.21 now passes. The cohort share is a snapshot-level
+// statistic like the category token rate, computed over all rows here; the
+// off-line adoption test computed it per-fold from the training rows only.
 // ---------------------------------------------------------------------------
 
 function sigmoid(z: number): number {
@@ -655,6 +697,26 @@ function fitLogistic(snapshot: Snapshot, model: ModelConstants): Logistic {
     const st = catStats[p.category ?? '(null)'] ?? { live: 0, n: 0 };
     return (st.live + 2) / (st.n + 4);
   };
+  // The cohort share: the share of protocols in the protocol's own age band
+  // that already carry a token. Bands are 0–1 / 1–2 / 2–3 / 3+ years by
+  // uncapped age, plus 'unk' when listed_at is null. Like the category token
+  // rate it is a snapshot-level prior over the same protocols the logistic
+  // trains on — not a per-fold statistic at build time (the off-line adoption
+  // test computed it per-fold from the training rows only, and this shipped
+  // fit reproduces its Brier scores).
+  const cohortStats: Record<string, { recorded: number; n: number }> = {};
+  for (const p of all) {
+    const b = ageBand(snapshot.as_of, p.listed_at);
+    const st = cohortStats[b] ?? { recorded: 0, n: 0 };
+    cohortStats[b] = st;
+    st.n++;
+    if (!isPreToken(p)) st.recorded++;
+  }
+  const baseRate = all.filter((p) => !isPreToken(p)).length / all.length;
+  const cohortShare = (p: SnapshotProtocol): number => {
+    const st = cohortStats[ageBand(snapshot.as_of, p.listed_at)] ?? { recorded: 0, n: 0 };
+    return st.n === 0 ? baseRate : st.recorded / st.n;
+  };
   const feats = (p: SnapshotProtocol): number[] => {
     const age = ageDays(snapshot.as_of, p.listed_at) ?? model.unknown_age_days;
     return [
@@ -663,12 +725,13 @@ function fitLogistic(snapshot: Snapshot, model: ModelConstants): Logistic {
       clamp(p.change_7d ?? 0, model.growth_floor, model.growth_cap) / 100,
       Math.min(p.chains.length, 10) / 10,
       catRate(p),
+      cohortShare(p),
     ];
   };
   const F = all.map(feats);
-  const mu = [0, 0, 0, 0, 0];
-  const sd = [1, 1, 1, 1, 1];
-  for (let k = 1; k < 5; k++) {
+  const mu = [0, 0, 0, 0, 0, 0];
+  const sd = [1, 1, 1, 1, 1, 1];
+  for (let k = 1; k < 6; k++) {
     mu[k] = mean(F.map((r) => r[k]!));
     sd[k] = Math.sqrt(mean(F.map((r) => (r[k]! - mu[k]!) ** 2))) || 1;
   }
@@ -676,21 +739,21 @@ function fitLogistic(snapshot: Snapshot, model: ModelConstants): Logistic {
   const ys = all.map((p) => (isPreToken(p) ? 0 : 1));
   const trIdx = all.map((_, i) => i).filter((i) => i % 2 === 0);
   const teIdx = all.map((_, i) => i).filter((i) => i % 2 === 1);
-  const w = [0, 0, 0, 0, 0];
+  const w = [0, 0, 0, 0, 0, 0];
   for (let it = 0; it < 3000; it++) {
-    const g = [0, 0, 0, 0, 0];
+    const g = [0, 0, 0, 0, 0, 0];
     for (const i of trIdx) {
       const z = Xs[i]!.reduce((a, v, k) => a + v * w[k]!, 0);
       const e = sigmoid(z) - ys[i]!;
-      for (let k = 0; k < 5; k++) g[k]! += e * Xs[i]![k]!;
+      for (let k = 0; k < 6; k++) g[k]! += e * Xs[i]![k]!;
     }
-    for (let k = 0; k < 5; k++) w[k]! -= (0.15 * g[k]!) / trIdx.length;
+    for (let k = 0; k < 6; k++) w[k]! -= (0.15 * g[k]!) / trIdx.length;
   }
   const score = (i: number): number => sigmoid(Xs[i]!.reduce((a, v, k) => a + v * w[k]!, 0));
-  const coefsRaw = [0, 0, 0, 0, 0];
+  const coefsRaw = [0, 0, 0, 0, 0, 0];
   coefsRaw[0] =
-    w[0]! - w[1]! * mu[1]! / sd[1]! - w[2]! * mu[2]! / sd[2]! - w[3]! * mu[3]! / sd[3]! - w[4]! * mu[4]! / sd[4]!;
-  for (let k = 1; k < 5; k++) coefsRaw[k] = w[k]! / sd[k]!;
+    w[0]! - w[1]! * mu[1]! / sd[1]! - w[2]! * mu[2]! / sd[2]! - w[3]! * mu[3]! / sd[3]! - w[4]! * mu[4]! / sd[4]! - w[5]! * mu[5]! / sd[5]!;
+  for (let k = 1; k < 6; k++) coefsRaw[k] = w[k]! / sd[k]!;
   return {
     coefsRaw,
     weightsStd: w,
@@ -778,14 +841,31 @@ export function impliedValue(
 // ---------------------------------------------------------------------------
 // Off-line measurements, embedded with their source. Brier, record-by-age and the
 // ablation tables are measured off-line from this snapshot (work/metrics/brier-odds.mjs
-// and work/metrics/ablation.md) because the LOO logistic refits are too slow to run
+// and work/metrics/ablation.md, plus work/odds/atm-brier-2026-11-26.md for the
+// adopted 6-feature odds) because the LOO logistic refits are too slow to run
 // at build time. They are constants of the snapshot, not of the code: re-measure
-// them if the snapshot changes. The ten-fold Brier misses the plan's gate of 0.21
-// by 0.004 — the dashboard states the miss, it does not round it away.
+// them if the snapshot changes. The ten-fold Brier of the shipped 6-feature odds
+// passes the plan's gate of 0.21 (0.200076); the 5-feature baseline's 0.213866
+// missed it by 0.004, and is kept in work/odds/ as the comparison.
 // ---------------------------------------------------------------------------
 
-/** Brier scores of the shipped 5-feature odds (no log TVL), from work/metrics/. */
-const BRIER_5F = { loo: 0.211244, tenfold: 0.213866, base: 0.247617 };
+/** Brier scores of the shipped 6-feature odds (BASE5 + cohort share, no log TVL),
+ *  from work/odds/atm-brier-2026-11-26.md (reproduced by
+ *  work/odds/atm-measurements-2026-11-26.mjs). */
+const BRIER_6F_COHORT = { loo: 0.197657, tenfold: 0.200076, base: 0.247617 };
+
+/** Bootstrap standard errors (200 seeded refits), measured off-line
+ *  (work/odds/atm-measurements-2026-11-26.json). Curve: resamples of the clean
+ *  comparables, seed 0x72616434 — the same seed and resampling as the rank-range
+ *  bootstrap in buildBoard. Odds: resamples of the 758 rows, seed 0x4F444453,
+ *  refit of the adopted 6-feature logistic (statistics from the resample, GD on
+ *  its even positions, as the shipped fit). */
+const BOOTSTRAP_SE = {
+  curve_intercept_se: 1.7737,
+  curve_slope_se: 0.1012,
+  logistic_weights_se_std: [0.1379, 0.146, 0.1715, 0.1474, 0.1687, 0.1502],
+  logistic_coefs_raw_se: [0.6635, 0.4588, 1.3517, 0.4588, 0.7921, 0.676],
+};
 
 /** Record-by-age: peers that recorded a token, by age band (work/metrics/ablation.md §7). */
 const RECORD_BY_AGE = [
@@ -796,7 +876,11 @@ const RECORD_BY_AGE = [
   { band: 'age unknown', n: 113, recorded: 89, share: 0.788 },
 ];
 
-/** Curve ablation on the 92-comparable set, median factor miss (work/metrics/ablation.md §1). */
+/** Curve ablation on the 92-comparable set, median factor miss (work/metrics/ablation.md §1).
+ *  The last row is the control: the shipped path with growth replaced by another
+ *  row's growth (seed 0x434F4E54) — it must not help, and it does not
+ *  (work/odds/atm-measurements-2026-11-26.json). It is not a candidate term and
+ *  is excluded from the terms-kept count. */
 const ABLATION_CURVE = [
   { variant: 'size-only (baseline)', loo_92: 3.2701, wf_med_92: 2.1057, kept: true, note: 'baseline' },
   { variant: '+ category effects (ridge λ=10)', loo_92: 3.4079, wf_med_92: 2.2849, kept: false, note: 'worse on both main tests' },
@@ -804,17 +888,26 @@ const ABLATION_CURVE = [
   { variant: '+ maturity multiplier', loo_92: 3.1642, wf_med_92: 2.3093, kept: false, note: 'LOO improves, walk-forward worsens' },
   { variant: '+ breadth multiplier', loo_92: 3.4807, wf_med_92: 2.1899, kept: false, note: 'worse on both main tests' },
   { variant: '+ growth + maturity', loo_92: 3.0468, wf_med_92: 2.3225, kept: false, note: 'LOO improves, walk-forward worsens' },
+  { variant: '+ control: growth of another row', loo_92: 3.2224, wf_med_92: 2.1368, kept: false, note: 'control — must not help; growth permuted over 92 raw comps, seed 0x434F4E54; worse on both tests' },
 ];
 
-/** Odds ablation: Brier when one feature is removed (work/metrics/ablation.md §6).
- *  The first row is the full 6-feature model; the shipped model drops log TVL. */
+/** Odds ablation: Brier of the shipped 6-feature model (BASE5 + cohort share) with
+ *  one feature removed — except log TVL, which is not in the shipped model: its row
+ *  is the shipped model WITH log TVL added. All rows measured off-line against the
+ *  shipped model (work/odds/atm-measurements-2026-11-26.json); a feature is KEPT
+ *  only when removing it worsens BOTH Brier scores. The last row is the control:
+ *  the shipped model with growth replaced by another row's growth (seed 0x434F4E54).
+ *  Terms kept: 4 of 6 (age, growth, category token rate, cohort share); chains and
+ *  log TVL are not kept. The control row is not a candidate term. */
 const ABLATION_ODDS = [
-  { feature: 'full model (6 features)', brier_loo: 0.211288, brier_tenfold: 0.214728, kept: true, note: 'reference' },
-  { feature: 'log TVL', brier_loo: 0.211244, brier_tenfold: 0.213866, kept: false, note: 'removing improves both Brier scores; AUC 0.7752 → 0.7745' },
-  { feature: 'age', brier_loo: 0.21953, brier_tenfold: 0.222902, kept: true, note: 'removing worsens both' },
-  { feature: 'growth (7d)', brier_loo: 0.214275, brier_tenfold: 0.218077, kept: true, note: 'removing worsens both' },
-  { feature: 'chains', brier_loo: 0.213385, brier_tenfold: 0.216591, kept: true, note: 'removing worsens both' },
-  { feature: 'category token rate', brier_loo: 0.232185, brier_tenfold: 0.234356, kept: true, note: 'strongest feature; without it AUC 0.7752 → 0.6463' },
+  { feature: 'full model (6 features)', brier_loo: 0.197657, brier_tenfold: 0.200076, kept: true, note: 'reference — shipped LOGIT_COHORT' },
+  { feature: 'log TVL', brier_loo: 0.197845, brier_tenfold: 0.201059, kept: false, note: 'adding log TVL to the shipped model worsens both Brier scores; AUC test 0.8030 → 0.8033' },
+  { feature: 'age', brier_loo: 0.197839, brier_tenfold: 0.200169, kept: true, note: 'removing worsens both (LOO +0.000182, ten-fold +0.000093)' },
+  { feature: 'growth (7d)', brier_loo: 0.198468, brier_tenfold: 0.200939, kept: true, note: 'removing worsens both' },
+  { feature: 'chains', brier_loo: 0.198028, brier_tenfold: 0.200055, kept: false, note: 'removing worsens LOO (+0.000371) but improves ten-fold (−0.000021, noise-level) — NOT KEPT by the both-tests rule' },
+  { feature: 'category token rate', brier_loo: 0.212117, brier_tenfold: 0.212868, kept: true, note: 'strongest feature; without it AUC test 0.8030 → 0.7076' },
+  { feature: 'cohort share', brier_loo: 0.211244, brier_tenfold: 0.213866, kept: true, note: 'removing returns the 5-feature baseline; AUC test 0.8030 → 0.7745' },
+  { feature: '+ control: growth of another row', brier_loo: 0.196916, brier_tenfold: 0.199366, kept: false, note: 'control — must not help; growth permuted over 758 rows, seed 0x434F4E54. MEASURED: it helps on both tests (LOO −0.000741, ten-fold −0.000710) — reported, not hidden; see the Method tab' },
 ];
 
 /** The protocols the board ranks, strongest first, with ranks 1..n.
@@ -988,7 +1081,7 @@ export function buildBoard(
 
   const board: BoardRow[] = listed.map((s, i) => {
     const rank = i + 1;
-    const econ = farmEconomics(s.implied, s.p.tvl_usd, s.age, model);
+    const econ = farmEconomics(s.implied, s.p.tvl_usd, s.age, s.launchP, model);
     const core = isRankable(s.p);
     return {
       rank,
@@ -1027,6 +1120,7 @@ export function buildBoard(
         net_per_hour_usd: round2(econ.perHour),
         breakeven_drop_share: round4(econ.breakeven),
         breakeven_25ph_drop_share: round4(econ.breakeven25ph),
+        breakeven_odds: round4(econ.breakevenOdds),
         hours_worked: round4(econ.hours),
         hold_days: econ.holdDays,
         verdict: econ.verdict,
@@ -1084,18 +1178,26 @@ export function buildBoard(
   }
   audit.sort((a, b) => b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : 1));
 
-  // The ledger: six groups that sum to the 758 protocols in the snapshot, counted
+  // The ledger: seven groups that sum to the 758 protocols in the snapshot, counted
   // from the data, not hard-coded. The checksum is the FNV-1a of the canonical
-  // board string; the dashboard recomputes it from DATA and compares.
+  // board string; the dashboard recomputes it from DATA and compares. The old
+  // sixth group ("Live-token, other") was heterogeneous, so it is split in two:
+  // protocols the screen excludes (versioned / bridge / staking / CEX / wrapped
+  // names) and protocols that pass the screen but carry no usable market cap
+  // (mcap null) — the two counts add back to the old group exactly.
   const wl = new Set(snapshot.watchlist);
-  const liveCount = snapshot.protocols.filter((p) => !isPreToken(p)).length;
+  const liveExcludedByScreen = snapshot.protocols.filter((p) => !isPreToken(p) && !screenLive(p)).length;
+  const liveNoUsableCap = snapshot.protocols.filter(
+    (p) => !isPreToken(p) && screenLive(p) && !rawSlugs.has(p.slug),
+  ).length;
   const ledgerGroups: LedgerGroup[] = [
     { name: 'Watchlist (board)', count: board.filter((r) => wl.has(r.slug)).length, note: 'the 40 protocols the watchlist rule names' },
     { name: 'Core off-watchlist', count: board.filter((r) => r.flag === 'Core' && !wl.has(r.slug)).length, note: 'pass the strict screen, not on the watchlist' },
     { name: 'Extended (pre-token)', count: audit.filter((a) => a.status === 'extended').length, note: 'pre-token, set aside by the screen, with a reason each' },
     { name: 'Live-token comparables', count: clean.length, note: 'fit the curve; mcap/TVL inside [0.02, 5]' },
     { name: 'Live-token set aside', count: raw.length - clean.length, note: 'mcap/TVL outside [0.02, 5]' },
-    { name: 'Live-token, other', count: liveCount - raw.length, note: 'already trade; not comparables' },
+    { name: 'Live-token, excluded by screen', count: liveExcludedByScreen, note: 'fail the screen: versioned, bridge, staking, CEX or wrapped name' },
+    { name: 'Live-token, no usable cap', count: liveNoUsableCap, note: 'pass the screen, but no market cap to price from' },
   ];
   const ledger = {
     groups: ledgerGroups,
@@ -1131,9 +1233,13 @@ export function buildBoard(
     logistic_auc_train: logistic.aucTrain,
     logistic_auc_test: logistic.aucTest,
     bootstrap_n: BOOTSTRAP_N,
-    brier_loo: BRIER_5F.loo,
-    brier_tenfold: BRIER_5F.tenfold,
-    brier_base: BRIER_5F.base,
+    brier_loo: BRIER_6F_COHORT.loo,
+    brier_tenfold: BRIER_6F_COHORT.tenfold,
+    brier_base: BRIER_6F_COHORT.base,
+    curve_intercept_se: BOOTSTRAP_SE.curve_intercept_se,
+    curve_slope_se: BOOTSTRAP_SE.curve_slope_se,
+    logistic_weights_se_std: BOOTSTRAP_SE.logistic_weights_se_std,
+    logistic_coefs_raw_se: BOOTSTRAP_SE.logistic_coefs_raw_se,
     record_by_age: RECORD_BY_AGE,
     band_p25: round4(bandP25),
     band_p75: round4(bandP75),
@@ -1187,15 +1293,20 @@ export function stepMinutes(holdDays: number): number[] {
  * costs is the gas of its steps plus the T-bill charge: the same $10,000 in a 4%
  * T-bill over the hold. Drop = implied x drop share x deposit / TVL. Net = drop -
  * gas - T-bill. $/hour = net / hours worked. Break-even is the drop share at which
- * the net is zero; break-even at $25/h adds the pay for the hours worked. The
- * verdict is by money: FARM when the net is positive and pays at least $25 an hour,
- * THIN when the net is positive but pays less, SKIP when the net is negative.
- * Withdrawal gas is not modelled; the exit step says so.
+ * the net is zero; break-even at $25/h adds the pay for the hours worked. Break-even
+ * odds is the launch probability at which the expected net is zero: (gas + T-bill)
+ * divided by the drop if the token launches (drop / launchP, full precision — it is
+ * computed here, not in the dashboard, so the rounded DATA fields cannot drift it).
+ * When it is above 1 the row never breaks even on odds alone: even a certain token
+ * pays less than the cost. The verdict is by money: FARM when the net is positive
+ * and pays at least $25 an hour, THIN when the net is positive but pays less, SKIP
+ * when the net is negative. Withdrawal gas is not modelled; the exit step says so.
  */
 export function farmEconomics(
   implied: number,
   tvl: number,
   age: number | null,
+  launchP: number,
   model: ModelConstants = MODEL,
 ): {
   deposit: number;
@@ -1209,6 +1320,7 @@ export function farmEconomics(
   perHour: number;
   breakeven: number;
   breakeven25ph: number;
+  breakevenOdds: number;
   verdict: 'FARM' | 'THIN' | 'SKIP';
 } {
   const deposit = model.farm_deposit_usd;
@@ -1222,9 +1334,13 @@ export function farmEconomics(
   const perHour = net / hours;
   const breakeven = ((gas + tbill) * tvl) / (implied * deposit);
   const breakeven25ph = ((gas + tbill + model.farm_pay_rate_usd_h * hours) * tvl) / (implied * deposit);
+  // The drop if the token launches (the odds not applied), and the odds at which
+  // the expected net is zero. launchP is clamped to [0.10, 0.85], never 0.
+  const dropIfLaunches = drop / launchP;
+  const breakevenOdds = (gas + tbill) / dropIfLaunches;
   const verdict: 'FARM' | 'THIN' | 'SKIP' =
     net > 0 && perHour >= model.farm_pay_rate_usd_h ? 'FARM' : net > 0 ? 'THIN' : 'SKIP';
-  return { deposit, holdDays, weeks, gas, tbill, drop, net, hours, perHour, breakeven, breakeven25ph, verdict };
+  return { deposit, holdDays, weeks, gas, tbill, drop, net, hours, perHour, breakeven, breakeven25ph, breakevenOdds, verdict };
 }
 
 /** The category's main action, in words a farmer can follow. */
@@ -1422,6 +1538,7 @@ export function radarRow(row: BoardRow, onWatchlist: boolean): RadarRow {
     net_per_hour_usd: row.model.net_per_hour_usd,
     breakeven_drop_share: row.model.breakeven_drop_share,
     breakeven_25ph_drop_share: row.model.breakeven_25ph_drop_share,
+    breakeven_odds: row.model.breakeven_odds,
     hours_worked: row.model.hours_worked,
     hold_days: row.model.hold_days,
     verdict: row.model.verdict,
