@@ -191,6 +191,19 @@ export interface FarmStepSpec extends FarmStep {
   minutes: number;
 }
 
+/** One nearest priced peer: a clean comparable (a live-token protocol with a real
+ *  market cap) whose fitted value is closest to this row's, with its real cap over
+ *  the curve's fitted value. CAP ÷ CURVE = 1.00 means the curve prices it exactly;
+ *  above 1 the market pays more than the curve, below 1 less. The 5 nearest are
+ *  emitted per board row so the drawer shows priced peers, not board rows. */
+export interface PricedPeer {
+  slug: string;
+  name: string;
+  cap_usd: number;
+  curve_usd: number;
+  cap_div_curve: number;
+}
+
 /** One row of board.json: the ranked board's row. */
 export interface BoardRow {
   rank: number;
@@ -235,6 +248,8 @@ export interface BoardRow {
     hours_worked: number;
     hold_days: number;
     verdict: 'FARM' | 'THIN' | 'SKIP';
+    /** The 5 nearest priced peers (clean comparables) by fitted value, with CAP ÷ CURVE. */
+    priced_peers: PricedPeer[];
   };
   farm_steps: string[];
 }
@@ -275,6 +290,8 @@ export interface RadarRow {
   hours_worked: number;
   hold_days: number;
   verdict: 'FARM' | 'THIN' | 'SKIP';
+  /** The 5 nearest priced peers (clean comparables) by fitted value, with CAP ÷ CURVE. */
+  priced_peers: PricedPeer[];
   /** The 8-step farm plan, from the board (so the page does not regenerate it). */
   farm_steps: string[];
 }
@@ -948,6 +965,27 @@ export function buildBoard(
     });
   }
 
+  // --- the nearest priced peers per board row: the 5 clean comparables whose
+  // fitted value is closest to the row's, each with its real market cap over the
+  // curve's fitted value (CAP ÷ CURVE). Priced peers are live-token protocols —
+  // the board rows themselves have no token and no cap — so the drawer shows the
+  // market's own pricing of the nearest comparables, not more pre-token rows.
+  const pricedPeers = (base: number): PricedPeer[] =>
+    clean
+      .map((c) => {
+        const fitted = curve.predict(c);
+        return { c, fitted, d: Math.abs(Math.log(fitted) - Math.log(base)) };
+      })
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 5)
+      .map((x) => ({
+        slug: x.c.slug,
+        name: x.c.name,
+        cap_usd: Math.round(x.c.mcap_usd!),
+        curve_usd: Math.round(x.fitted),
+        cap_div_curve: round4(x.c.mcap_usd! / x.fitted),
+      }));
+
   const board: BoardRow[] = listed.map((s, i) => {
     const rank = i + 1;
     const econ = farmEconomics(s.implied, s.p.tvl_usd, s.age, model);
@@ -992,6 +1030,7 @@ export function buildBoard(
         hours_worked: round4(econ.hours),
         hold_days: econ.holdDays,
         verdict: econ.verdict,
+        priced_peers: pricedPeers(s.base),
       },
       farm_steps: farmSteps(s.p, s.age).map(stepText),
     };
@@ -1386,6 +1425,7 @@ export function radarRow(row: BoardRow, onWatchlist: boolean): RadarRow {
     hours_worked: row.model.hours_worked,
     hold_days: row.model.hold_days,
     verdict: row.model.verdict,
+    priced_peers: row.model.priced_peers,
     farm_steps: row.farm_steps,
   };
 }

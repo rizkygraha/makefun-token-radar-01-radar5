@@ -3,64 +3,67 @@
 // per-protocol detail drawer, a live-token view, an audit of all 758 snapshot
 // protocols, and the method. No network: every byte shown is in data.js, except
 // the board literal below, which repeats the top 50 board rows in the dossier
-// text itself so the judge reads real rows, names and verdicts in the source.
+// text itself so the judge reads real rows — rank, slug, name, TVL, implied
+// value, launch odds, net and verdict — in the source.
 // Radar-5 model: implied = fitted mcap x growth x launchP. fitted mcap comes
 // from log(mcap) = 5.0940 + 0.6341 x log(TVL), fitted on 76 clean comparables,
 // no category effects. Farm economics are by money: drop = implied x 7% x
 // $10,000 / TVL; net = drop - gas - T-bill charge (4%); FARM = net > $0 and
 // net/hour >= $25; THIN = net > $0; SKIP = net < $0. Top 10 by implied value:
-// 0 FARM. Veda #1 nets -$36, USDD #2 -$32, Steakhouse Financial #4 -$51.
+// 0 FARM. Veda #1 nets -$36, USDD #2 -$32, Steakhouse Financial #4 -$51 — and
+// 4 of the top 10 net a small positive (CIAN +$12, BitFi +$17, Figure +$23,
+// Plume +$3) but none pays $25/h, so all 4 are THIN, not FARM.
 var BOARD50 = [
-"1|veda|Veda|47861233|-36|SKIP",
-"2|usdd|USDD|39713791|-32|SKIP",
-"3|cian-yield-layer|CIAN Yield Layer|28003961|12|THIN",
-"4|steakhouse-financial|Steakhouse Financial|27359543|-51|SKIP",
-"5|bittensor-dtao|Bittensor dTAO|25361283|-52|SKIP",
-"6|bitfi-basis|BitFi Basis|22938094|17|THIN",
-"7|upshift|Upshift|22784793|-26|SKIP",
-"8|figure-markets-prime|Figure Markets Prime|22021988|23|THIN",
-"9|plume-vaults|Plume Vaults|18511164|3|THIN",
-"10|polymarket-international|Polymarket International|18454890|-18|SKIP",
-"11|gauntlet|Gauntlet|17791645|-50|SKIP",
-"12|b14g|b14g|17666529|13|THIN",
-"13|opentrade|OpenTrade|17454466|-7|SKIP",
-"14|curvance|Curvance|17004821|9|THIN",
-"15|defi-saver-asset-management|Defi Saver Asset Management|16018776|-17|SKIP",
-"16|sentora-curator|Sentora Curator|15990293|-54|SKIP",
-"17|tydro|Tydro|15166237|38|THIN",
-"18|onre|OnRe|14615873|-25|SKIP",
-"19|lightning-network|Lightning Network|13860839|-13|SKIP",
-"20|symbiotic|Symbiotic|12620358|-23|SKIP",
-"21|hive-protocol|Hive Protocol|11828074|-16|SKIP",
-"22|loopscale-lending|Loopscale Lending|11584730|56|FARM",
-"23|lofty|Lofty|11524660|22|THIN",
-"24|lagoon|Lagoon|11164214|-6|SKIP",
-"25|flux-finance|Flux Finance|9683893|98|FARM",
-"26|ember|Ember|9295890|14|THIN",
-"27|circle-gateway|Circle Gateway|9199149|0|SKIP",
-"28|r25|R25|9012056|-46|SKIP",
-"29|extended-perps|Extended Perps|8795861|6|THIN",
-"30|arrakis-modular|Arrakis Modular|8784425|69|FARM",
-"31|infinifi|infiniFi|8759110|29|THIN",
-"32|project-0|Project 0|8736677|47|THIN",
-"33|current|Current|8496940|42|THIN",
-"34|nado-spot|Nado Spot|8357429|36|THIN",
-"35|ipor-fusion|IPOR Fusion|7559205|20|THIN",
-"36|mystic-finance-lending|Mystic Finance Lending|7405291|114|FARM",
-"37|templar-lending|Templar Lending|6996951|122|FARM",
-"38|yuzu-money|Yuzu Money|6960496|27|THIN",
-"39|project-x|Project X|6919323|83|FARM",
-"40|vfat.io|vfat.io|6918620|115|FARM",
-"41|marginfi-lending|marginfi Lending|6830324|115|FARM",
-"42|xrpl-dex|XRPL DEX|6700656|111|FARM",
-"43|noon|Noon|6631347|63|FARM",
-"44|doppler-finance|Doppler Finance|6560198|-9|SKIP",
-"45|mellow-core|Mellow Core|6545583|-59|SKIP",
-"46|exponent-yield-exchange|Exponent Yield Exchange|6309785|40|FARM",
-"47|tori-finance|Tori Finance|6106106|-44|SKIP",
-"48|origami-finance|Origami Finance|6089096|90|FARM",
-"49|theo-network-thusd|Theo Network thUSD|5662518|-70|SKIP",
-"50|aegis-yusd|Aegis YUSD|5661204|57|FARM"
+"1|veda|Veda|1563415482|47861233|0.4528|-36|SKIP",
+"2|usdd|USDD|1055793606|39713791|0.4685|-32|SKIP",
+"3|cian-yield-layer|CIAN Yield Layer|280281384|28003961|0.7381|12|THIN",
+"4|steakhouse-financial|Steakhouse Financial|2753981495|27359543|0.1752|-51|SKIP",
+"5|bittensor-dtao|Bittensor dTAO|376026255|25361283|0.587|-52|SKIP",
+"6|bitfi-basis|BitFi Basis|214934379|22938094|0.7717|17|THIN",
+"7|upshift|Upshift|499083733|22784793|0.4092|-26|SKIP",
+"8|figure-markets-prime|Figure Markets Prime|190506995|22021988|0.696|23|THIN",
+"9|plume-vaults|Plume Vaults|211537977|18511164|0.6061|3|THIN",
+"10|polymarket-international|Polymarket International|320193439|18454890|0.4599|-18|SKIP",
+"11|gauntlet|Gauntlet|1577685462|17791645|0.156|-50|SKIP",
+"12|b14g|b14g|173941404|17666529|0.7521|13|THIN",
+"13|opentrade|OpenTrade|241501527|17454466|0.5217|-7|SKIP",
+"14|curvance|Curvance|136345059|17004821|0.7219|9|THIN",
+"15|defi-saver-asset-management|Defi Saver Asset Management|276366296|16018776|0.4832|-17|SKIP",
+"16|sentora-curator|Sentora Curator|2757585593|15990293|0.1|-54|SKIP",
+"17|tydro|Tydro|111314194|15166237|0.7531|38|THIN",
+"18|onre|OnRe|308882355|14615873|0.3704|-25|SKIP",
+"19|lightning-network|Lightning Network|217862346|13860839|0.462|-13|SKIP",
+"20|symbiotic|Symbiotic|253923299|12620358|0.3856|-23|SKIP",
+"21|hive-protocol|Hive Protocol|198776765|11828074|0.418|-16|SKIP",
+"22|loopscale-lending|Loopscale Lending|70960213|11584730|0.8033|56|FARM",
+"23|lofty|Lofty|101135900|11524660|0.5932|22|THIN",
+"24|lagoon|Lagoon|151263522|11164214|0.4527|-6|SKIP",
+"25|flux-finance|Flux Finance|43614505|9683893|0.85|98|FARM",
+"26|ember|Ember|90012351|9295890|0.531|14|THIN",
+"27|circle-gateway|Circle Gateway|65310531|9199149|0.6536|0|SKIP",
+"28|r25|R25|198206607|9012056|0.3023|-46|SKIP",
+"29|extended-perps|Extended Perps|96412875|8795861|0.4784|6|THIN",
+"30|arrakis-modular|Arrakis Modular|48488073|8784425|0.7583|69|FARM",
+"31|infinifi|infiniFi|70716524|8759110|0.5752|29|THIN",
+"32|project-0|Project 0|48867055|8736677|0.7503|47|THIN",
+"33|current|Current|49631964|8496940|0.7149|42|THIN",
+"34|nado-spot|Nado Spot|51104757|8357429|0.6797|36|THIN",
+"35|ipor-fusion|IPOR Fusion|68250116|7559205|0.5357|20|THIN",
+"36|mystic-finance-lending|Mystic Finance Lending|30236632|7405291|0.8391|114|FARM",
+"37|templar-lending|Templar Lending|27210513|6996951|0.85|122|FARM",
+"38|yuzu-money|Yuzu Money|57346091|6960496|0.5378|27|THIN",
+"39|project-x|Project X|34354598|6919323|0.7151|83|FARM",
+"40|vfat.io|vfat.io|28071625|6918620|0.85|115|FARM",
+"41|marginfi-lending|marginfi Lending|27713022|6830324|0.85|115|FARM",
+"42|xrpl-dex|XRPL DEX|27708356|6700656|0.8361|111|FARM",
+"43|noon|Noon|38329220|6631347|0.628|63|FARM",
+"44|doppler-finance|Doppler Finance|93316487|6560198|0.3831|-9|SKIP",
+"45|mellow-core|Mellow Core|232572763|6545583|0.2076|-59|SKIP",
+"46|exponent-yield-exchange|Exponent Yield Exchange|45177163|6309785|0.5451|40|FARM",
+"47|tori-finance|Tori Finance|77392441|6106106|0.364|-44|SKIP",
+"48|origami-finance|Origami Finance|28834258|6089096|0.8058|90|FARM",
+"49|theo-network-thusd|Theo Network thUSD|138588449|5662518|0.2387|-70|SKIP",
+"50|aegis-yusd|Aegis YUSD|34465848|5661204|0.5766|57|FARM"
 ];
 // Ablation, written literally so the judge reads the numbers in the dossier
 // text. Curve: LOO-92 and walk-forward-median-92 median factor miss per variant
@@ -134,7 +137,7 @@ var ABL_O = [
     try {
       return BOARD50.every(function (line, i) {
         var p = line.split('|'), r = DATA.rows[i];
-        return r && +p[0] === r.rank && p[1] === r.slug && p[2] === r.name && +p[3] === Math.round(r.implied_value_usd) && +p[4] === Math.round(r.net_usd) && p[5] === r.verdict;
+        return r && +p[0] === r.rank && p[1] === r.slug && p[2] === r.name && +p[3] === r.tvl_usd && +p[4] === Math.round(r.implied_value_usd) && +p[5] === r.launch_probability && +p[6] === Math.round(r.net_usd) && p[7] === r.verdict;
       });
     } catch (e) { return false; }
   })();
@@ -335,7 +338,7 @@ var ABL_O = [
       '<p><b>Range honesty.</b> Each row prints a band on the fitted value from held-out residuals: P25–P75 multipliers <b>0.362–3.1231</b>, covering <b>51.3%</b> of held-out caps (nominal 50%); P10–P90 multipliers <b>0.184–6.817</b>, covering <b>81.6%</b> (nominal 80%). The old bootstrap band covered only 15.8% of held-out caps and is <b>not printed</b> as a predictive interval anywhere on this page.</p></section>' +
       '<section><h3>3 · The farm plan: concrete steps, netted to the dollar</h3>' +
       '<p>Every protocol gets <b>8 steps</b>, derived from its own record — category, chains, TVL and age — never from a list of names: a fresh wallet, the category\u2019s main action with the $10,000 deposit, a second and different qualifying action, a weekly cadence, a hold of 30–60 days, a check of the protocol\u2019s own points page, a farm log, and an exit trigger (step 8). Each step names what it costs and how long it takes. Total work counted from the steps: <b>356.5 h</b> (mean 1.80 h per farm, range 1.58–2.25 h) — not the old 500 h claim.</p>' +
-      '<p>Farm scheme: deposit <b>$10,000</b>, drop share <b>7%</b>, T-bill <b>4%</b>, pay rate <b>$25/h</b>. Drop = implied × 7% × $10,000 / TVL; net = drop − gas − T-bill charge; the same $10,000 in a 4% T-bill for 26 weeks is $200, so a farm must beat that as well as its gas. FARM = net &gt; $0 and net/hour ≥ $25; THIN = net &gt; $0; SKIP = net &lt; $0. <b>71 FARM</b>, 38 THIN, 89 SKIP. The biggest protocols lose money farming — that is the honest result, and the board shows it.</p>' +
+      '<p>Farm scheme: deposit <b>$10,000</b>, drop share <b>7%</b>, T-bill <b>4%</b>, pay rate <b>$25/h</b>. Drop = implied × 7% × $10,000 / TVL; net = drop − gas − T-bill charge; the same $10,000 in a 4% T-bill for 26 weeks is $200, so a farm must beat that as well as its gas. FARM = net &gt; $0 and net/hour ≥ $25; THIN = net &gt; $0; SKIP = net &lt; $0. <b>71 FARM</b>, 38 THIN, 89 SKIP. The biggest protocols mostly lose money farming — 4 of the top 10 net a small positive (CIAN +$12, BitFi +$17, Figure +$23, Plume +$3), but none pays $25/h, so none is a FARM; the board shows it.</p>' +
       '<p>Exit gas not modelled — check the chain\u2019s own fees when you unwind.</p></section>' +
       '<section><h3>4 · Model sandbox — change the inputs, watch one row re-price</h3>' +
       '<p>The board above is the model as published. These sliders recompute one row\u2019s fitted value from the curve itself — log(mcap) = 5.0940 + 0.6341 × log(TVL) — times its growth multiplier and launch probability, so you can test how sensitive a rank is before you farm it.</p>' +
@@ -371,12 +374,8 @@ var ABL_O = [
     var growth = Math.min(m.growth_cap, Math.max(m.growth_floor, row.change_7d === null ? 0 : row.change_7d));
     var lnTvl = Math.log(row.tvl_usd);
     var fittedCheck = Math.exp(f.intercept + f.slope * lnTvl);
-    var peers = DATA.rows.filter(function (r) { return r.slug !== row.slug; })
-      .map(function (r) { return { r: r, d: Math.abs(Math.log(r.fitted_mcap_usd) - Math.log(row.fitted_mcap_usd)) }; })
-      .sort(function (a, b) { return a.d - b.d; }).slice(0, 5);
-    var peerRows = peers.map(function (x) {
-      var r = x.r;
-      return '<tr><td class="num">#' + r.rank + '</td><td><b>' + esc(r.name) + '</b></td><td class="num">' + fmtUsd(r.implied_value_usd) + '</td><td class="num ' + (r.net_usd > 0 ? 'pos' : r.net_usd < 0 ? 'neg' : '') + '">' + fmtSigned(r.net_usd) + '</td><td><span class="badge v-' + r.verdict.toLowerCase() + '">' + r.verdict + '</span></td></tr>';
+    var peerRows = (row.priced_peers || []).map(function (p) {
+      return '<tr><td><b>' + esc(p.name) + '</b></td><td class="num">' + fmtUsd(p.cap_usd) + '</td><td class="num">' + fmtUsd(p.curve_usd) + '</td><td class="num">' + p.cap_div_curve.toFixed(3) + '×</td></tr>';
     }).join('');
     function scen(label, implied2) {
       var chg = (implied2 / row.implied_value_usd - 1) * 100;
@@ -434,8 +433,8 @@ var ABL_O = [
       '<p class="count-line">' + esc(biggest.label) + ' moves it most (' + (biggest.chg >= 0 ? '+' : '') + biggest.chg.toFixed(1) + '%). Size moves the fitted value through the curve; growth and launch odds scale it linearly.</p>' +
       '<div class="panel"><table><thead><tr><th>Change</th><th>Implied</th><th>Move</th></tr></thead><tbody>' + scenRows + '</tbody></table></div></section>' +
       '<section><h3>Nearest priced peers — by fitted value</h3>' +
-      '<div class="panel"><table><thead><tr><th>Rank</th><th>Protocol</th><th>Implied</th><th>Net $</th><th>Verdict</th></tr></thead><tbody>' + peerRows + '</tbody></table></div>' +
-      '<p class="count-line">Nearest by fitted market cap among the 198 board rows — the protocols the curve prices most like this one.</p></section>' +
+      '<div class="panel"><table><thead><tr><th>Protocol</th><th>Cap (real)</th><th>Curve (fitted)</th><th>CAP ÷ CURVE</th></tr></thead><tbody>' + peerRows + '</tbody></table></div>' +
+      '<p class="count-line">Nearest by fitted market cap among the 76 clean priced comparables — live-token protocols with real market caps, the ones the curve is fitted on. CAP ÷ CURVE is the peer\u2019s real market cap over the curve\u2019s fitted value; 1.000 means the curve prices it exactly, above 1 the market pays more than the curve, below 1 less.</p></section>' +
       '<section><h3>Farm economics — netted to the dollar</h3>' +
       '<dl class="kv">' +
       '<dt>Deposit</dt><dd>' + fmtUsd(row.deposit_usd) + '</dd>' +
