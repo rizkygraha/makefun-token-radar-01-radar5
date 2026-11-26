@@ -1,5 +1,45 @@
-// Token Radar's model, version radar-4: one sealed snapshot of the protocol universe in,
+// Token Radar's model, version radar-5: one sealed snapshot of the protocol universe in,
 // one ranked board out.
+//
+// Radar-5 is the Radar-4 model rebuilt from its own blind tests. What stays and what
+// goes was decided term by term, on two blind tests each, and is written down in
+// work/metrics/ablation.md (measured on this snapshot, re-runnable from work/metrics/):
+//   - the size curve is size-only: log(market cap) fitted by least squares on log(TVL)
+//     over the live-token protocols that pass the same screen and whose market-cap / TVL
+//     sits inside [0.02, 5]. Category effects were tested at ridge lambda 0..1000 and
+//     did not improve either blind test on the 92-comparable set (LOO x3.27 size-only
+//     vs x3.41 with effects at lambda 10; walk-forward x2.11 vs x2.28), so the shipped
+//     curve carries no category effect. The fit runs at run time from this snapshot.
+//   - growth stays: the 7-day growth multiplier (weight 0.5) improves both blind tests
+//     over size-only (LOO x3.27 -> x3.11, walk-forward x2.11 -> x2.01).
+//   - maturity and breadth are dropped: neither improves both blind tests over size-only
+//     (maturity improves LOO but worsens walk-forward; breadth worsens both), so their
+//     multipliers are 1.0 and the implied value does not use them.
+//   - the launch odds are a 5-feature logistic (age, growth, chains, category token
+//     rate, intercept). log TVL was tested and removed: dropping it improves both
+//     Brier scores (LOO 0.21129 -> 0.21124, ten-fold 0.21473 -> 0.21387) while AUC
+//     moves 0.7752 -> 0.7745. Category token rate is the strongest feature (weight
+//     +1.09 std). Brier, measured off-line and embedded with its source: LOO 0.211,
+//     ten-fold 0.214, base rate 0.248. The ten-fold Brier misses the plan's gate of
+//     0.21 by 0.004 — stated on the dashboard, not hidden.
+//   - the value band is built from leave-one-out residuals, not from bootstrap refits:
+//     [p25, p75] of the LOO log-residuals covers 50.0% of held-out caps and [p10, p90]
+//     covers 78.9% on the 76-comparable set (the old bootstrap band covered 15.8% and
+//     is not printed). The multipliers and the coverage are computed at run time from
+//     this snapshot and reported on the dashboard. The bootstrap (200 seeded refits)
+//     is kept only for the rank range.
+//   - farm economics are by money, not by rank: a $10,000 deposit, a 7% drop share,
+//     gas from the steps, and a 4% T-bill charge pro-rated over the hold. Drop =
+//     implied x 7% x $10,000 / TVL; net = drop - gas - T-bill; $/hour = net / hours.
+//     FARM = net > 0 and $/hour >= $25; THIN = net > 0; SKIP = net < 0. 47 of 198
+//     rows pay $25/hour; none of the top 10 by implied is a FARM.
+//   - the farm plan is 8 steps (7 from Radar-4 plus an exit trigger: leave when TVL
+//     falls below 70% of today's, or the drop window closes). Total work: 356.5 hours
+//     for 198 farms (mean 1.80 h), computed from the step times — not the 500 hours
+//     the Radar-4 dashboard claimed. Withdrawal gas is not modelled; the drawer says so.
+//   - the audit accounts for all 758 protocols (342 pre-token + 416 live-token), the
+//     ledger groups sum to 758, and the integrity strip checks the board recomputed,
+//     ranks ordered, totals equal, and a checksum that matches main.ts.
 //
 // The board's coverage is a mode, COVERAGE below. The shipped mode is 'core': the board
 // ranks only the 198 Core protocols — the ones that pass the strict screen the
@@ -8,8 +48,8 @@
 // of them, whatever their size; it stays available (main.ts --coverage all) so the
 // 342-row board can still be reproduced. Either way the curve, the launch
 // probability, the bootstrap and the farm economics are the same code on the same
-// snapshot, and the Audit tab always accounts for all 342 pre-token protocols with
-// their Core/Extended flag and reason — the audit is about the snapshot, not the board.
+// snapshot, and the Audit tab accounts for all 758 protocols — the audit is about the
+// snapshot, not the board.
 // A protocol is pre-token when its index entry records no token (no market cap, no
 // CoinGecko id, no symbol); the live-token protocols are kept apart and shown with
 // the market's own values, never mixed into the board.
@@ -18,27 +58,23 @@
 // the protocol's detail view, so a reader can check the arithmetic:
 //
 //   curve     = a fitted size curve, not a flat multiple: log(market cap) is fitted by
-//               least squares on log(TVL) plus a category effect, over the
-//               live-token protocols that pass the same screen and whose market-cap / TVL
-//               sits inside [0.02, 5] (the band the bulk of the market occupies; outside
-//               it a token's price is not a TVL story). The category effects are shrunk
-//               toward zero with a ridge penalty (lambda 10 on the category columns):
-//               unshrunk, the nine effects overfit 76 comparables and lose to the flat
-//               multiple on a second time split; shrunk, the curve beats it on every
-//               blind test. The fit runs at run time from this snapshot: intercept,
-//               slope, category effects, R squared and the residual spread are all
-//               reported on the dashboard, and the curve is validated out of sample —
-//               leave-one-out and two time splits (fit the older comparables, test the
-//               newer ones) — against the flat category-median multiple radar-2 used.
-//               The curve wins all three.
-//   base      = exp(curve): the market cap a live protocol of this size and category
-//               would carry, from the fitted curve.
+//               least squares on log(TVL) over the live-token protocols that pass the
+//               same screen and whose market-cap / TVL sits inside [0.02, 5] (the band
+//               the bulk of the market occupies; outside it a token's price is not a
+//               TVL story). No category effect: tested and dropped (see above). The fit
+//               runs at run time from this snapshot: intercept, slope, R squared and
+//               the residual spread are all reported on the dashboard, and the curve is
+//               validated out of sample — leave-one-out and two time splits (fit the
+//               older comparables, test the newer ones) — against the flat category-
+//               median multiple radar-2 used. The shipped predictor is the curve times
+//               the growth multiplier; it wins all three blind tests. Validation is
+//               reported as median factor miss (max(pred/actual, actual/pred)), the
+//               unit the plan's gates use.
+//   base      = exp(curve): the market cap a live protocol of this size would carry,
+//               from the fitted curve.
 //   growth    = clamp(change_7d, -60, 120) per cent
 //   growthMult = 1 + (growth / 100) x GROWTH_WEIGHT
-//   maturity  = 0.6 + min(age_days, 1095) / 1095 x 0.4   (age_days unknown: 365)
-//   breadth   = min(1 + 0.02 x (chains - 1), 1.10): a protocol live on more chains reaches
-//               more wallets, so its launch reaches further.
-//   launchP   = a fitted logistic regression P(has a token | log TVL, age, growth, chains,
+//   launchP   = a fitted logistic regression P(has a token | age, growth, chains,
 //               category token rate), fitted at run time by gradient descent on this
 //               snapshot (train on the even-indexed protocols, tested on the odd ones;
 //               AUC reported on the dashboard), clamped to [0.10, 0.85]. The category
@@ -50,23 +86,25 @@
 //               stated, never a promise about any one protocol. The fitted growth
 //               weight is negative — that is what the data says, and the dashboard
 //               shows it as fitted.
-//   implied   = max(1, round(base x growthMult x maturity x breadth x launchP))
+//   implied   = max(1, round(base x growthMult x launchP))
 //
 // Uncertainty is shown, not hidden. The curve is refitted 200 times on resamples of the
 // clean comparables (a seeded generator, so two runs write the same bytes); each row gets
-// a value band [p10, p90] and a rank range from those refits. The band is the
-// uncertainty of the fit; the larger predictive uncertainty is the residual spread
-// (about 1.34 in log terms), and the dashboard says both.
+// a rank range from those refits. The value band is NOT from the bootstrap: it is the
+// leave-one-out residual band on the fitted value, [p25, p75] as the main band and
+// [p10, p90] as the wide band, with the measured coverage printed beside it. The larger
+// predictive uncertainty is the residual spread (about 1.36 in log terms), and the
+// dashboard says both.
 //
-// Farm economics are netted to the dollar. Each row's farm costs its capital plus its gas
-// (first step under $3, second step $4-8, third $2-4, about $2 a week over the hold), and
-// the dashboard shows the net at the low end of the value band (implied_low minus total
-// cost) and the ratio implied_low / cost. The net is positive on every row — a farm costs
-// tens of dollars against an implied value in the hundreds of thousands — so the verdict
-// the verdict rations the scarce input, which is time: about 2-3 hours for a full farm.
-// FARM is ranks 1-50, THIN 51-150, SKIP 151-198 on the 198-Core board (198 full farms
-// are about 500 hours); on the 342-row board the same rule reads THIN 51-200,
-// SKIP 201-342 (342 full farms are about 850 hours).
+// Farm economics are netted to the dollar. Each row's farm is a $10,000 deposit: the
+// drop it can earn at a 7% drop share, minus the gas of its steps and the 4% T-bill
+// charge on the deposit over the hold. The verdict is by money: FARM when the net is
+// positive and pays at least $25 an hour, THIN when the net is positive but pays less,
+// SKIP when the net is negative. The net is negative on 106 of 198 rows — a farm costs
+// tens of dollars of gas and T-bill charge against a drop that, for the biggest
+// protocols, is smaller than the cost, because the drop is the implied value times
+// the deposit over a very large TVL. The scarce input is time: 356.5 hours for 198
+// full farms, mean 1.80 hours each, computed from the step times.
 //
 // No protocol name is ever special-cased: the same functions score every row.
 
@@ -93,37 +131,40 @@ export interface Snapshot {
   watchlist: string[];
 }
 
-/** The model's constants, as the dashboard states them and the sandbox may change them. */
+/** The model's constants, as the dashboard states them and the sandbox may change them.
+ *  Radar-5: maturity and breadth are gone (tested and dropped — see the header); the
+ *  farm constants are the by-money scheme (deposit $10,000, drop share 7%, T-bill 4%,
+ *  pay rate $25/h). age_cap_days caps the age feature of the launch odds. */
 export interface ModelConstants {
   growth_weight: number;
   growth_floor: number;
   growth_cap: number;
-  maturity_floor: number;
-  maturity_range: number;
-  maturity_days: number;
+  age_cap_days: number;
   unknown_age_days: number;
-  breadth_per_chain: number;
-  breadth_cap: number;
   prob_floor: number;
   prob_cap: number;
+  farm_deposit_usd: number;
+  farm_drop_share: number;
+  tbill_rate: number;
+  farm_pay_rate_usd_h: number;
 }
 
 export const MODEL: ModelConstants = {
   growth_weight: 0.5,
   growth_floor: -60,
   growth_cap: 120,
-  maturity_floor: 0.6,
-  maturity_range: 0.4,
-  maturity_days: 1095,
+  age_cap_days: 1095,
   unknown_age_days: 365,
-  breadth_per_chain: 0.02,
-  breadth_cap: 1.1,
   prob_floor: 0.1,
   prob_cap: 0.85,
+  farm_deposit_usd: 10000,
+  farm_drop_share: 0.07,
+  tbill_rate: 0.04,
+  farm_pay_rate_usd_h: 25,
 };
 
 /** The model's version label: the dashboard names it and the rules quote it. */
-export const MODEL_VERSION = 'radar-4';
+export const MODEL_VERSION = 'radar-5';
 
 /** Board coverage: 'core' ranks only the 198 Core protocols, 'all' ranks all 342 pre-token. */
 export type Coverage = 'core' | 'all';
@@ -142,6 +183,12 @@ export interface FarmStep {
   text: string;
   cost: string;
   time: string;
+}
+
+/** A farm step with its work minutes, so the hours the economics charge are the hours
+ *  the plan takes (farmSteps and farmEconomics both read stepMinutes). */
+export interface FarmStepSpec extends FarmStep {
+  minutes: number;
 }
 
 /** One row of board.json: the ranked board's row. */
@@ -166,17 +213,27 @@ export interface BoardRow {
     fitted_mcap_usd: number;
     growth_pct: number;
     growth_multiplier: number;
-    maturity_multiplier: number;
-    breadth_multiplier: number;
     launch_probability: number;
     age_days: number | null;
+    /** Residual-LOO band on the fitted launch value: [p25, p75] of the LOO log-residuals. */
     value_low_usd: number;
     value_high_usd: number;
+    /** Wide residual-LOO band on the fitted launch value: [p10, p90]. */
+    value_low90_usd: number;
+    value_high90_usd: number;
     rank_low: number;
     rank_high: number;
-    total_cost_usd: number;
-    net_low_usd: number;
-    value_cost_ratio: number;
+    /** Farm economics by money, on a $10,000 deposit at a 7% drop share. */
+    deposit_usd: number;
+    drop_usd: number;
+    gas_usd: number;
+    tbill_charge_usd: number;
+    net_usd: number;
+    net_per_hour_usd: number;
+    breakeven_drop_share: number;
+    breakeven_25ph_drop_share: number;
+    hours_worked: number;
+    hold_days: number;
     verdict: 'FARM' | 'THIN' | 'SKIP';
   };
   farm_steps: string[];
@@ -200,17 +257,26 @@ export interface RadarRow {
   implied_value_usd: number;
   fitted_mcap_usd: number;
   growth_multiplier: number;
-  maturity_multiplier: number;
-  breadth_multiplier: number;
   launch_probability: number;
   value_low_usd: number;
   value_high_usd: number;
+  value_low90_usd: number;
+  value_high90_usd: number;
   rank_low: number;
   rank_high: number;
-  total_cost_usd: number;
-  net_low_usd: number;
-  value_cost_ratio: number;
+  deposit_usd: number;
+  drop_usd: number;
+  gas_usd: number;
+  tbill_charge_usd: number;
+  net_usd: number;
+  net_per_hour_usd: number;
+  breakeven_drop_share: number;
+  breakeven_25ph_drop_share: number;
+  hours_worked: number;
+  hold_days: number;
   verdict: 'FARM' | 'THIN' | 'SKIP';
+  /** The 8-step farm plan, from the board (so the page does not regenerate it). */
+  farm_steps: string[];
 }
 
 /** A live-token protocol: it already trades, so the board shows the market's own value. */
@@ -225,7 +291,12 @@ export interface LiveRow {
   mcap_tvl: number | null;
 }
 
-/** The fitted size curve and its out-of-sample validation, as the dashboard reports it. */
+/** The fitted size curve and its out-of-sample validation, as the dashboard reports it.
+ *  Validation is median factor miss (max(pred/actual, actual/pred)), the unit the
+ *  plan's gates use; the 92-comparable set is reported beside the 76 clean set.
+ *  Brier, record-by-age and the ablation tables are measured off-line from this
+ *  snapshot (work/metrics/) and embedded with their source — the LOO logistic refits
+ *  are too slow to run at build time. */
 export interface FitStats {
   intercept: number;
   slope: number;
@@ -237,29 +308,56 @@ export interface FitStats {
   set_aside: string[];
   loo_curve: number;
   loo_flat: number;
+  loo_curve_92: number;
+  loo_flat_92: number;
   time_curve: number;
   time_flat: number;
   time_cut: string;
+  time_curve_92: number;
+  time_flat_92: number;
   time2_curve: number;
   time2_flat: number;
   time2_cut: string;
+  time2_curve_92: number;
+  time2_flat_92: number;
   logistic_weights_std: number[];
   logistic_coefs_raw: number[];
   logistic_auc_train: number;
   logistic_auc_test: number;
   bootstrap_n: number;
+  brier_loo: number;
+  brier_tenfold: number;
+  brier_base: number;
+  record_by_age: { band: string; n: number; recorded: number; share: number }[];
+  band_p25: number;
+  band_p75: number;
+  band_p10: number;
+  band_p90: number;
+  band_coverage_p25_75: number;
+  band_coverage_p10_90: number;
+  ablation_curve: { variant: string; loo_92: number; wf_med_92: number; kept: boolean; note: string }[];
+  ablation_odds: { feature: string; brier_loo: number; brier_tenfold: number; kept: boolean; note: string }[];
 }
 
-/** One pre-token protocol's audit entry: ranked, with its Core/Extended flag and reason. */
+/** One protocol's audit entry: ranked, extended, or live-token, with its reason.
+ *  The audit covers all 758 protocols in the snapshot, not just the board. */
 export interface AuditRow {
   slug: string;
   name: string;
   category: string | null;
   tvl_usd: number;
-  status: 'ranked';
-  rank: number;
-  flag: 'Core' | 'Extended';
+  mcap_usd: number | null;
+  status: 'ranked' | 'extended' | 'live-comp' | 'live-set-aside' | 'live-other';
+  rank: number | null;
+  flag: 'Core' | 'Extended' | 'Live';
   reason: string | null;
+}
+
+/** One ledger group: a named slice of the 758 protocols, with its count and reason. */
+export interface LedgerGroup {
+  name: string;
+  count: number;
+  note: string;
 }
 
 /** Everything the dashboard needs: the board, the live set, and the model it runs. */
@@ -278,6 +376,8 @@ export interface RadarData {
   median_implied_usd: number;
   fit: FitStats;
   verdict_counts: { farm: number; thin: number; skip: number };
+  total_hours_worked: number;
+  ledger: { groups: LedgerGroup[]; total: number; checksum: string };
   audit: AuditRow[];
   rows: RadarRow[];
   live: LiveRow[];
@@ -428,9 +528,10 @@ function solve(A: number[][], b: number[]): number[] {
 }
 
 /** Ordinary least squares with a hair of ridge (1e-8) on every slope, never the intercept.
- *  ridgeCat adds a further penalty on the category-effect columns (3rd onward): it shrinks
- *  the nine category effects toward zero, which is what stops them overfitting 76
- *  comparables. fitCurve and the bootstrap refits both use ridgeCat 10. */
+ *  ridgeCat adds a further penalty on the category-effect columns (3rd onward). Radar-5
+ *  fits no category columns (see fitCurve), so ridgeCat stays 0; the parameter is kept
+ *  so the bootstrap refits call the same function. fitCurve and the bootstrap refits
+ *  both use ridgeCat 0. */
 function ols(X: number[][], y: number[], ridge = 1e-8, ridgeCat = 0): number[] {
   const k = X[0]!.length;
   const XtX = Array.from({ length: k }, () => Array(k).fill(0));
@@ -444,17 +545,9 @@ function ols(X: number[][], y: number[], ridge = 1e-8, ridgeCat = 0): number[] {
   return solve(XtX, Xty);
 }
 
-/** Categories with at least 3 comparables get their own effect; the rest get 0. */
-function catsOf(train: SnapshotProtocol[]): string[] {
-  const cc: Record<string, number> = {};
-  train.forEach((p) => {
-    const c = p.category ?? '(null)';
-    cc[c] = (cc[c] ?? 0) + 1;
-  });
-  return Object.keys(cc).filter((c) => cc[c]! >= 3);
-}
-
-/** One design row: [1, log TVL, one 0/1 per category with an effect]. */
+/** One design row: [1, log TVL]. Radar-5 fits no category column: category effects were
+ *  tested at ridge lambda 0..1000 and did not improve either blind test on the
+ *  92-comparable set, so the shipped curve is size-only (work/metrics/ablation.md). */
 function designRow(p: SnapshotProtocol, cats: string[]): number[] {
   const row = [1, Math.log(p.tvl_usd)];
   for (const c of cats) row.push(p.category === c ? 1 : 0);
@@ -469,12 +562,12 @@ interface Curve {
 }
 
 function fitCurve(train: SnapshotProtocol[]): Curve {
-  const cats = catsOf(train);
+  const cats: string[] = [];
   const beta = ols(
     train.map((p) => designRow(p, cats)),
     train.map((p) => Math.log(p.mcap_usd!)),
     1e-8,
-    10,
+    0,
   );
   return {
     beta,
@@ -492,14 +585,17 @@ function flatPred(train: SnapshotProtocol[], p: SnapshotProtocol): number {
   return p.tvl_usd * (m ?? 0.25);
 }
 
-/** The absolute percentage error of a prediction against a protocol's real market cap. */
-function absPctErr(pred: number, actual: number): number {
-  return Math.abs(pred - actual) / actual;
+/** The factor miss of a prediction against a protocol's real market cap:
+ *  max(pred/actual, actual/pred). The unit the plan's gates use. */
+function factorMiss(pred: number, actual: number): number {
+  return Math.max(pred / actual, actual / pred);
 }
 
 // ---------------------------------------------------------------------------
-// The fitted launch probability: logistic regression P(has a token | log TVL,
-// age, growth, chains, category token rate), fitted by gradient descent at run time.
+// The fitted launch probability: logistic regression P(has a token | age, growth,
+// chains, category token rate), fitted by gradient descent at run time.
+// Radar-5: log TVL was tested and removed (work/metrics/ablation.md §6) — dropping it
+// improves both Brier scores while AUC moves 0.7752 -> 0.7745.
 // ---------------------------------------------------------------------------
 
 function sigmoid(z: number): number {
@@ -546,17 +642,16 @@ function fitLogistic(snapshot: Snapshot, model: ModelConstants): Logistic {
     const age = ageDays(snapshot.as_of, p.listed_at) ?? model.unknown_age_days;
     return [
       1,
-      Math.log(p.tvl_usd),
-      Math.min(age, model.maturity_days) / model.maturity_days,
+      Math.min(age, model.age_cap_days) / model.age_cap_days,
       clamp(p.change_7d ?? 0, model.growth_floor, model.growth_cap) / 100,
       Math.min(p.chains.length, 10) / 10,
       catRate(p),
     ];
   };
   const F = all.map(feats);
-  const mu = [0, 0, 0, 0, 0, 0];
-  const sd = [1, 1, 1, 1, 1, 1];
-  for (let k = 1; k < 6; k++) {
+  const mu = [0, 0, 0, 0, 0];
+  const sd = [1, 1, 1, 1, 1];
+  for (let k = 1; k < 5; k++) {
     mu[k] = mean(F.map((r) => r[k]!));
     sd[k] = Math.sqrt(mean(F.map((r) => (r[k]! - mu[k]!) ** 2))) || 1;
   }
@@ -564,21 +659,21 @@ function fitLogistic(snapshot: Snapshot, model: ModelConstants): Logistic {
   const ys = all.map((p) => (isPreToken(p) ? 0 : 1));
   const trIdx = all.map((_, i) => i).filter((i) => i % 2 === 0);
   const teIdx = all.map((_, i) => i).filter((i) => i % 2 === 1);
-  const w = [0, 0, 0, 0, 0, 0];
+  const w = [0, 0, 0, 0, 0];
   for (let it = 0; it < 3000; it++) {
-    const g = [0, 0, 0, 0, 0, 0];
+    const g = [0, 0, 0, 0, 0];
     for (const i of trIdx) {
       const z = Xs[i]!.reduce((a, v, k) => a + v * w[k]!, 0);
       const e = sigmoid(z) - ys[i]!;
-      for (let k = 0; k < 6; k++) g[k]! += e * Xs[i]![k]!;
+      for (let k = 0; k < 5; k++) g[k]! += e * Xs[i]![k]!;
     }
-    for (let k = 0; k < 6; k++) w[k]! -= (0.15 * g[k]!) / trIdx.length;
+    for (let k = 0; k < 5; k++) w[k]! -= (0.15 * g[k]!) / trIdx.length;
   }
   const score = (i: number): number => sigmoid(Xs[i]!.reduce((a, v, k) => a + v * w[k]!, 0));
-  const coefsRaw = [0, 0, 0, 0, 0, 0];
+  const coefsRaw = [0, 0, 0, 0, 0];
   coefsRaw[0] =
-    w[0]! - w[1]! * mu[1]! / sd[1]! - w[2]! * mu[2]! / sd[2]! - w[3]! * mu[3]! / sd[3]! - w[4]! * mu[4]! / sd[4]! - w[5]! * mu[5]! / sd[5]!;
-  for (let k = 1; k < 6; k++) coefsRaw[k] = w[k]! / sd[k]!;
+    w[0]! - w[1]! * mu[1]! / sd[1]! - w[2]! * mu[2]! / sd[2]! - w[3]! * mu[3]! / sd[3]! - w[4]! * mu[4]! / sd[4]!;
+  for (let k = 1; k < 5; k++) coefsRaw[k] = w[k]! / sd[k]!;
   return {
     coefsRaw,
     weightsStd: w,
@@ -614,7 +709,31 @@ function percentile(values: number[], q: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!;
 }
 
-/** The multipliers and the implied value one protocol gets under `model`. */
+/** FNV-1a 32-bit hash as 8 hex chars: the board checksum the integrity strip checks. */
+export function fnv1aHex(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+/** The canonical board string the checksum is taken over: rank:slug:implied, one per row.
+ *  The dashboard recomputes it from DATA with the same function and compares. */
+export function boardChecksumString(board: BoardRow[]): string {
+  return board.map((r) => `${r.rank}:${r.slug}:${r.implied_value_usd}`).join('|');
+}
+
+/** The 7-day growth multiplier of one protocol under `model`. */
+export function growthMultiplier(p: SnapshotProtocol, model: ModelConstants = MODEL): number {
+  const growthPct = clamp(finite(p.change_7d, 0), model.growth_floor, model.growth_cap);
+  return 1 + (growthPct / 100) * model.growth_weight;
+}
+
+/** The multipliers and the implied value one protocol gets under `model`.
+ *  Radar-5: implied = base x growthMult x launchP. Maturity and breadth were tested
+ *  and dropped (neither improves both blind tests over size-only), so they are 1.0. */
 export function impliedValue(
   protocol: SnapshotProtocol,
   asOf: string,
@@ -626,39 +745,71 @@ export function impliedValue(
   base: number;
   growthPct: number;
   growthMult: number;
-  maturityMult: number;
-  breadthMult: number;
   launchP: number;
   age: number | null;
 } {
   const age = ageDays(asOf, protocol.listed_at);
-  const ageForModel = age ?? model.unknown_age_days;
   const base = curve.predict(protocol);
   const rawGrowth = finite(protocol.change_7d, 0);
   const growthPct = clamp(rawGrowth, model.growth_floor, model.growth_cap);
-  const growthMult = 1 + (growthPct / 100) * model.growth_weight;
-  const ageNorm = clamp(ageForModel, 0, model.maturity_days) / model.maturity_days;
-  const maturityMult = model.maturity_floor + ageNorm * model.maturity_range;
-  const breadthMult = Math.min(
-    model.breadth_cap,
-    1 + model.breadth_per_chain * Math.max(0, protocol.chains.length - 1),
-  );
+  const growthMult = growthMultiplier(protocol, model);
   const launchP = logistic.predict(protocol);
-  const implied = Math.max(1, Math.round(base * growthMult * maturityMult * breadthMult * launchP));
-  return { implied, base, growthPct, growthMult, maturityMult, breadthMult, launchP, age };
+  const implied = Math.max(1, Math.round(base * growthMult * launchP));
+  return { implied, base, growthPct, growthMult, launchP, age };
 }
 
+// ---------------------------------------------------------------------------
+// Off-line measurements, embedded with their source. Brier, record-by-age and the
+// ablation tables are measured off-line from this snapshot (work/metrics/brier-odds.mjs
+// and work/metrics/ablation.md) because the LOO logistic refits are too slow to run
+// at build time. They are constants of the snapshot, not of the code: re-measure
+// them if the snapshot changes. The ten-fold Brier misses the plan's gate of 0.21
+// by 0.004 — the dashboard states the miss, it does not round it away.
+// ---------------------------------------------------------------------------
+
+/** Brier scores of the shipped 5-feature odds (no log TVL), from work/metrics/. */
+const BRIER_5F = { loo: 0.211244, tenfold: 0.213866, base: 0.247617 };
+
+/** Record-by-age: peers that recorded a token, by age band (work/metrics/ablation.md §7). */
+const RECORD_BY_AGE = [
+  { band: '0–1 years', n: 160, recorded: 52, share: 0.325 },
+  { band: '1–2 years', n: 183, recorded: 70, share: 0.383 },
+  { band: '2–3 years', n: 139, recorded: 76, share: 0.547 },
+  { band: '3+ years', n: 163, recorded: 129, share: 0.791 },
+  { band: 'age unknown', n: 113, recorded: 89, share: 0.788 },
+];
+
+/** Curve ablation on the 92-comparable set, median factor miss (work/metrics/ablation.md §1). */
+const ABLATION_CURVE = [
+  { variant: 'size-only (baseline)', loo_92: 3.2701, wf_med_92: 2.1057, kept: true, note: 'baseline' },
+  { variant: '+ category effects (ridge λ=10)', loo_92: 3.4079, wf_med_92: 2.2849, kept: false, note: 'worse on both main tests' },
+  { variant: '+ growth multiplier (w=0.5)', loo_92: 3.1147, wf_med_92: 2.0075, kept: true, note: 'shipped path' },
+  { variant: '+ maturity multiplier', loo_92: 3.1642, wf_med_92: 2.3093, kept: false, note: 'LOO improves, walk-forward worsens' },
+  { variant: '+ breadth multiplier', loo_92: 3.4807, wf_med_92: 2.1899, kept: false, note: 'worse on both main tests' },
+  { variant: '+ growth + maturity', loo_92: 3.0468, wf_med_92: 2.3225, kept: false, note: 'LOO improves, walk-forward worsens' },
+];
+
+/** Odds ablation: Brier when one feature is removed (work/metrics/ablation.md §6).
+ *  The first row is the full 6-feature model; the shipped model drops log TVL. */
+const ABLATION_ODDS = [
+  { feature: 'full model (6 features)', brier_loo: 0.211288, brier_tenfold: 0.214728, kept: true, note: 'reference' },
+  { feature: 'log TVL', brier_loo: 0.211244, brier_tenfold: 0.213866, kept: false, note: 'removing improves both Brier scores; AUC 0.7752 → 0.7745' },
+  { feature: 'age', brier_loo: 0.21953, brier_tenfold: 0.222902, kept: true, note: 'removing worsens both' },
+  { feature: 'growth (7d)', brier_loo: 0.214275, brier_tenfold: 0.218077, kept: true, note: 'removing worsens both' },
+  { feature: 'chains', brier_loo: 0.213385, brier_tenfold: 0.216591, kept: true, note: 'removing worsens both' },
+  { feature: 'category token rate', brier_loo: 0.232185, brier_tenfold: 0.234356, kept: true, note: 'strongest feature; without it AUC 0.7752 → 0.6463' },
+];
+
 /** The protocols the board ranks, strongest first, with ranks 1..n.
- *  Coverage 'core' ranks only the Core protocols (re-ranked 1..198, verdicts
- *  FARM 1-50 / THIN 51-150 / SKIP 151-198); coverage 'all' ranks every pre-token
- *  protocol (1..342, THIN 51-200 / SKIP 201-342). The fit, the bootstrap and the
- *  farm economics are identical in both modes; the audit always covers all 342,
- *  ranked in the full pre-token ordering, whatever the board shows. */
+ *  Coverage 'core' ranks only the Core protocols (re-ranked 1..198); coverage 'all'
+ *  ranks every pre-token protocol (1..342). Verdicts are by money (see farmEconomics),
+ *  not by rank. The fit, the bootstrap and the farm economics are identical in both
+ *  modes; the audit covers all 758 protocols in the snapshot, whatever the board shows. */
 export function buildBoard(
   snapshot: Snapshot,
   model: ModelConstants = MODEL,
   coverage: Coverage = 'all',
-): { board: BoardRow[]; fit: FitStats; audit: AuditRow[] } {
+): { board: BoardRow[]; fit: FitStats; audit: AuditRow[]; ledger: { groups: LedgerGroup[]; total: number; checksum: string } } {
   // --- the fitted curve and its validation, all from this snapshot ---
   const raw = rawComps(snapshot);
   const clean = cleanComps(raw);
@@ -677,37 +828,80 @@ export function buildBoard(
     catCounts[c] = (catCounts[c] ?? 0) + 1;
   });
   const catEffects = cats.map((c, i) => ({ category: c, effect: beta[2 + i]!, n: catCounts[c] ?? 0 }));
-  // Leave-one-out: curve vs the flat category-median multiple.
+  // The shipped predictor for a comparable is the curve times the growth multiplier
+  // (comparables already have tokens, so no launch probability is applied).
+  const shipped = (c: Curve, p: SnapshotProtocol): number =>
+    c.predict(p) * growthMultiplier(p, model);
+  // Leave-one-out on the clean set (76): curve vs the flat category-median multiple,
+  // as median factor miss; and the signed log-residuals of the fitted value, which
+  // the value band is built from.
   const eCurve: number[] = [];
   const eFlat: number[] = [];
+  const looBasePred: number[] = [];
+  const looResidLog: number[] = [];
   for (let i = 0; i < clean.length; i++) {
     const train = clean.filter((_, j) => j !== i);
     const held = clean[i]!;
-    eCurve.push(absPctErr(fitCurve(train).predict(held), held.mcap_usd!));
-    eFlat.push(absPctErr(flatPred(train, held), held.mcap_usd!));
+    const c = fitCurve(train);
+    const basePred = c.predict(held);
+    looBasePred.push(basePred);
+    looResidLog.push(Math.log(held.mcap_usd!) - Math.log(basePred));
+    eCurve.push(factorMiss(shipped(c, held), held.mcap_usd!));
+    eFlat.push(factorMiss(flatPred(train, held), held.mcap_usd!));
   }
   const looCurve = median(eCurve) ?? 0;
   const looFlat = median(eFlat) ?? 0;
-  // Time split: fit the older half of the dated comparables, test the newer half.
-  const dated = clean.filter((p) => p.listed_at).sort((a, b) => (a.listed_at! < b.listed_at! ? -1 : 1));
-  const cut = Math.floor(dated.length / 2);
-  const trainT = dated.slice(0, cut);
-  const testT = dated.slice(cut);
-  const timeCurve = fitCurve(trainT);
-  const eTimeCurve = testT.map((p) => absPctErr(timeCurve.predict(p), p.mcap_usd!));
-  const eTimeFlat = testT.map((p) => absPctErr(flatPred(trainT, p), p.mcap_usd!));
-  const timeCurveMed = median(eTimeCurve) ?? 0;
-  const timeFlatMed = median(eTimeFlat) ?? 0;
-  const timeCut = dated[cut]?.listed_at ?? '';
-  // Second time split: fit the earliest third, test the latest two-thirds. The
-  // unshrunk curve loses to the flat multiple here; the shrunk curve must win both.
-  const cut2 = Math.floor(dated.length / 3);
-  const trainT2 = dated.slice(0, cut2);
-  const testT2 = dated.slice(cut2);
-  const time2Curve = fitCurve(trainT2);
-  const time2CurveMed = median(testT2.map((p) => absPctErr(time2Curve.predict(p), p.mcap_usd!))) ?? 0;
-  const time2FlatMed = median(testT2.map((p) => absPctErr(flatPred(trainT2, p), p.mcap_usd!))) ?? 0;
-  const time2Cut = dated[cut2]?.listed_at ?? '';
+  // Leave-one-out on the full raw set (92), same predictor and baseline.
+  const eCurve92: number[] = [];
+  const eFlat92: number[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const train = raw.filter((_, j) => j !== i);
+    const held = raw[i]!;
+    const c = fitCurve(train);
+    eCurve92.push(factorMiss(shipped(c, held), held.mcap_usd!));
+    eFlat92.push(factorMiss(flatPred(train, held), held.mcap_usd!));
+  }
+  const looCurve92 = median(eCurve92) ?? 0;
+  const looFlat92 = median(eFlat92) ?? 0;
+  // The residual band: global quantiles of the LOO log-residuals, applied to the
+  // fitted value. Coverage is the share of clean comparables whose real market cap
+  // falls inside the band around their LOO fitted value — the coverage of the band
+  // the dashboard prints, measured on held-out caps.
+  const bandP25 = Math.exp(percentile(looResidLog, 0.25));
+  const bandP75 = Math.exp(percentile(looResidLog, 0.75));
+  const bandP10 = Math.exp(percentile(looResidLog, 0.1));
+  const bandP90 = Math.exp(percentile(looResidLog, 0.9));
+  const bandCov2575 =
+    looBasePred.filter((bp, i) => clean[i]!.mcap_usd! >= bp * bandP25 && clean[i]!.mcap_usd! <= bp * bandP75).length / clean.length;
+  const bandCov1090 =
+    looBasePred.filter((bp, i) => clean[i]!.mcap_usd! >= bp * bandP10 && clean[i]!.mcap_usd! <= bp * bandP90).length / clean.length;
+  // Time splits: fit the older comparables, test the newer ones; median-split and
+  // tertile-split, on the clean set and on the raw set.
+  const timeSplit = (comps: SnapshotProtocol[]) => {
+    const dated = comps.filter((p) => p.listed_at).sort((a, b) => (a.listed_at! < b.listed_at! ? -1 : 1));
+    const cut = Math.floor(dated.length / 2);
+    const trainT = dated.slice(0, cut);
+    const testT = dated.slice(cut);
+    const cT = fitCurve(trainT);
+    const eC = testT.map((p) => factorMiss(shipped(cT, p), p.mcap_usd!));
+    const eF = testT.map((p) => factorMiss(flatPred(trainT, p), p.mcap_usd!));
+    const cut2 = Math.floor(dated.length / 3);
+    const trainT2 = dated.slice(0, cut2);
+    const testT2 = dated.slice(cut2);
+    const cT2 = fitCurve(trainT2);
+    const eC2 = testT2.map((p) => factorMiss(shipped(cT2, p), p.mcap_usd!));
+    const eF2 = testT2.map((p) => factorMiss(flatPred(trainT2, p), p.mcap_usd!));
+    return {
+      curve: median(eC) ?? 0,
+      flat: median(eF) ?? 0,
+      cut: dated[cut]?.listed_at ?? '',
+      curve2: median(eC2) ?? 0,
+      flat2: median(eF2) ?? 0,
+      cut2: dated[cut2]?.listed_at ?? '',
+    };
+  };
+  const ts76 = timeSplit(clean);
+  const ts92 = timeSplit(raw);
   const logistic = fitLogistic(snapshot, model);
   const setAside = raw
     .filter((p) => {
@@ -728,9 +922,10 @@ export function buildBoard(
   // --- the board itself: Core only in 'core' mode (re-ranked 1..198), everything in 'all' ---
   const listed = coverage === 'core' ? scored.filter((s) => isRankable(s.p)) : scored;
 
-  // --- bootstrap: 200 refits of the curve, one value band and rank range per board row ---
+  // --- bootstrap: 200 refits of the curve, one rank range per board row ---
+  // Radar-5: the bootstrap is kept ONLY for the rank range. The value band comes
+  // from the leave-one-out residuals above (the bootstrap band covered 15.8%).
   const rng = mulberry32(0x72616434); // 'rad4'
-  const reps: number[][] = listed.map(() => []);
   const rankLo: number[] = listed.map(() => listed.length);
   const rankHi: number[] = listed.map(() => 1);
   for (let b = 0; b < BOOTSTRAP_N; b++) {
@@ -739,32 +934,23 @@ export function buildBoard(
       sample.map((p) => designRow(p, cats)),
       sample.map((p) => Math.log(p.mcap_usd!)),
       1e-8,
-      10,
+      0,
     );
     const baseRep = (p: SnapshotProtocol): number =>
       Math.exp(designRow(p, cats).reduce((a, v, i) => a + v * bb[i]!, 0));
     const vals = listed.map((s) =>
-      Math.max(1, Math.round(baseRep(s.p) * s.growthMult * s.maturityMult * s.breadthMult * s.launchP)),
+      Math.max(1, Math.round(baseRep(s.p) * s.growthMult * s.launchP)),
     );
     const order = vals.map((v, i) => ({ v, i })).sort((a, b) => b.v - a.v || (listed[a.i]!.p.slug < listed[b.i]!.p.slug ? -1 : 1));
     order.forEach((o, pos) => {
       rankLo[o.i] = Math.min(rankLo[o.i]!, pos + 1);
       rankHi[o.i] = Math.max(rankHi[o.i]!, pos + 1);
     });
-    vals.forEach((v, i) => reps[i]!.push(v));
   }
-
-  const thinCut = coverage === 'core' ? 150 : 200;
-  const verdictFor = (rank: number): 'FARM' | 'THIN' | 'SKIP' =>
-    rank <= 50 ? 'FARM' : rank <= thinCut ? 'THIN' : 'SKIP';
 
   const board: BoardRow[] = listed.map((s, i) => {
     const rank = i + 1;
-    const econ = farmEconomics(s.p, s.age);
-    const low = percentile(reps[i]!, 0.1);
-    const high = percentile(reps[i]!, 0.9);
-    const netLow = low - econ.totalCost;
-    const ratio = low / econ.totalCost;
+    const econ = farmEconomics(s.implied, s.p.tvl_usd, s.age, model);
     const core = isRankable(s.p);
     return {
       rank,
@@ -787,41 +973,96 @@ export function buildBoard(
         fitted_mcap_usd: Math.round(s.base),
         growth_pct: s.growthPct,
         growth_multiplier: round4(s.growthMult),
-        maturity_multiplier: round4(s.maturityMult),
-        breadth_multiplier: round4(s.breadthMult),
         launch_probability: round4(s.launchP),
         age_days: s.age,
-        value_low_usd: low,
-        value_high_usd: high,
+        value_low_usd: Math.max(1, Math.round(s.base * bandP25)),
+        value_high_usd: Math.max(1, Math.round(s.base * bandP75)),
+        value_low90_usd: Math.max(1, Math.round(s.base * bandP10)),
+        value_high90_usd: Math.max(1, Math.round(s.base * bandP90)),
         rank_low: rankLo[i]!,
         rank_high: rankHi[i]!,
-        total_cost_usd: econ.totalCost,
-        net_low_usd: netLow,
-        value_cost_ratio: Math.round(ratio),
-        verdict: verdictFor(rank),
+        deposit_usd: econ.deposit,
+        drop_usd: round2(econ.drop),
+        gas_usd: econ.gas,
+        tbill_charge_usd: round2(econ.tbill),
+        net_usd: round2(econ.net),
+        net_per_hour_usd: round2(econ.perHour),
+        breakeven_drop_share: round4(econ.breakeven),
+        breakeven_25ph_drop_share: round4(econ.breakeven25ph),
+        hours_worked: round4(econ.hours),
+        hold_days: econ.holdDays,
+        verdict: econ.verdict,
       },
       farm_steps: farmSteps(s.p, s.age).map(stepText),
     };
   });
 
-  // The audit is about the snapshot, not the board: every pre-token protocol, all 342,
-  // with its rank in the full pre-token ordering and its Core/Extended flag and reason —
-  // in 'core' mode the board itself carries only the 198 Core rows.
-  const audit: AuditRow[] = scored
-    .map((s, i) => {
-      const core = isRankable(s.p);
-      return {
-        slug: s.p.slug,
-        name: s.p.name,
-        category: s.p.category,
-        tvl_usd: s.p.tvl_usd,
-        status: 'ranked' as const,
-        rank: i + 1,
-        flag: core ? ('Core' as const) : ('Extended' as const),
-        reason: core ? null : exclusionReason(s.p),
-      };
-    })
-    .sort((a, b) => b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : 1));
+  // The audit is about the snapshot, not the board: all 758 protocols — every
+  // pre-token protocol with its rank in the full pre-token ordering and its
+  // Core/Extended flag and reason, plus every live-token protocol with its status.
+  // In 'core' mode the board itself carries only the 198 Core rows.
+  const audit: AuditRow[] = [];
+  scored.forEach((s, i) => {
+    const core = isRankable(s.p);
+    audit.push({
+      slug: s.p.slug,
+      name: s.p.name,
+      category: s.p.category,
+      tvl_usd: s.p.tvl_usd,
+      mcap_usd: s.p.mcap_usd,
+      status: core ? ('ranked' as const) : ('extended' as const),
+      rank: i + 1,
+      flag: core ? ('Core' as const) : ('Extended' as const),
+      reason: core ? null : exclusionReason(s.p),
+    });
+  });
+  const cleanSlugs = new Set(clean.map((p) => p.slug));
+  const rawSlugs = new Set(raw.map((p) => p.slug));
+  for (const p of snapshot.protocols.filter((q) => !isPreToken(q))) {
+    let status: AuditRow['status'];
+    let reason: string;
+    if (cleanSlugs.has(p.slug)) {
+      status = 'live-comp';
+      reason = 'live-token comparable — fits the curve';
+    } else if (rawSlugs.has(p.slug)) {
+      status = 'live-set-aside';
+      reason = `mcap/TVL ${(p.mcap_usd! / p.tvl_usd).toFixed(2)}x outside [0.02, 5]`;
+    } else {
+      status = 'live-other';
+      reason = 'already trades — not a launch candidate';
+    }
+    audit.push({
+      slug: p.slug,
+      name: p.name,
+      category: p.category,
+      tvl_usd: p.tvl_usd,
+      mcap_usd: p.mcap_usd,
+      status,
+      rank: null,
+      flag: 'Live' as const,
+      reason,
+    });
+  }
+  audit.sort((a, b) => b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : 1));
+
+  // The ledger: six groups that sum to the 758 protocols in the snapshot, counted
+  // from the data, not hard-coded. The checksum is the FNV-1a of the canonical
+  // board string; the dashboard recomputes it from DATA and compares.
+  const wl = new Set(snapshot.watchlist);
+  const liveCount = snapshot.protocols.filter((p) => !isPreToken(p)).length;
+  const ledgerGroups: LedgerGroup[] = [
+    { name: 'Watchlist (board)', count: board.filter((r) => wl.has(r.slug)).length, note: 'the 40 protocols the watchlist rule names' },
+    { name: 'Core off-watchlist', count: board.filter((r) => r.flag === 'Core' && !wl.has(r.slug)).length, note: 'pass the strict screen, not on the watchlist' },
+    { name: 'Extended (pre-token)', count: audit.filter((a) => a.status === 'extended').length, note: 'pre-token, set aside by the screen, with a reason each' },
+    { name: 'Live-token comparables', count: clean.length, note: 'fit the curve; mcap/TVL inside [0.02, 5]' },
+    { name: 'Live-token set aside', count: raw.length - clean.length, note: 'mcap/TVL outside [0.02, 5]' },
+    { name: 'Live-token, other', count: liveCount - raw.length, note: 'already trade; not comparables' },
+  ];
+  const ledger = {
+    groups: ledgerGroups,
+    total: ledgerGroups.reduce((a, g) => a + g.count, 0),
+    checksum: fnv1aHex(boardChecksumString(board)),
+  };
 
   const fit: FitStats = {
     intercept: beta[0]!,
@@ -834,22 +1075,42 @@ export function buildBoard(
     set_aside: setAside,
     loo_curve: looCurve,
     loo_flat: looFlat,
-    time_curve: timeCurveMed,
-    time_flat: timeFlatMed,
-    time_cut: timeCut,
-    time2_curve: time2CurveMed,
-    time2_flat: time2FlatMed,
-    time2_cut: time2Cut,
+    loo_curve_92: looCurve92,
+    loo_flat_92: looFlat92,
+    time_curve: ts76.curve,
+    time_flat: ts76.flat,
+    time_cut: ts76.cut,
+    time_curve_92: ts92.curve,
+    time_flat_92: ts92.flat,
+    time2_curve: ts76.curve2,
+    time2_flat: ts76.flat2,
+    time2_cut: ts76.cut2,
+    time2_curve_92: ts92.curve2,
+    time2_flat_92: ts92.flat2,
     logistic_weights_std: logistic.weightsStd,
     logistic_coefs_raw: logistic.coefsRaw,
     logistic_auc_train: logistic.aucTrain,
     logistic_auc_test: logistic.aucTest,
     bootstrap_n: BOOTSTRAP_N,
+    brier_loo: BRIER_5F.loo,
+    brier_tenfold: BRIER_5F.tenfold,
+    brier_base: BRIER_5F.base,
+    record_by_age: RECORD_BY_AGE,
+    band_p25: round4(bandP25),
+    band_p75: round4(bandP75),
+    band_p10: round4(bandP10),
+    band_p90: round4(bandP90),
+    band_coverage_p25_75: round4(bandCov2575),
+    band_coverage_p10_90: round4(bandCov1090),
+    ablation_curve: ABLATION_CURVE,
+    ablation_odds: ABLATION_ODDS,
   };
-  return { board, fit, audit };
+  return { board, fit, audit, ledger };
 }
 
 const round4 = (n: number): number => Math.round(n * 1e4) / 1e4;
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 /** A step as one string: its action, then its cost and time, within the gate's 20..600 chars. */
 export function stepText(step: FarmStep): string {
@@ -864,14 +1125,6 @@ function chainOf(p: SnapshotProtocol): string {
   return p.chains.length > 0 ? p.chains[0]! : 'its main chain';
 }
 
-/** How much capital one farm position needs, from the protocol's own TVL. */
-function capitalFor(p: SnapshotProtocol): number {
-  if (p.tvl_usd >= 5_000_000_000) return 250;
-  if (p.tvl_usd >= 1_000_000_000) return 150;
-  if (p.tvl_usd >= 100_000_000) return 100;
-  return 50;
-}
-
 /** How long to hold, from the protocol's age: younger protocols get a longer window. */
 function holdDaysFor(age: number | null): number {
   if (age === null) return 30;
@@ -880,18 +1133,59 @@ function holdDaysFor(age: number | null): number {
   return 30;
 }
 
+/** The work minutes of the 8 farm steps, in order, for a hold of `holdDays` days.
+ *  Step 4 is 10 minutes a week over the hold; step 5 (the hold itself) is not work.
+ *  farmSteps and farmEconomics both read this, so the hours the economics charge
+ *  are exactly the hours the plan takes. Total: 45 + 10 x weeks. */
+export function stepMinutes(holdDays: number): number[] {
+  const weeks = Math.ceil(holdDays / 7);
+  return [5, 15, 10, 10 * weeks, 0, 5, 5, 5];
+}
+
 /**
- * A farm's netted economics: capital plus every step's gas — the first step under $3, the
- * second $4-8, the third $2-4, about $2 a week over the hold — as one total cost in dollars.
+ * A farm's economics by money, on the model's $10,000 deposit at a 7% drop share.
+ * The deposit is not a cost — it comes back when the position unwinds. What the farm
+ * costs is the gas of its steps plus the T-bill charge: the same $10,000 in a 4%
+ * T-bill over the hold. Drop = implied x drop share x deposit / TVL. Net = drop -
+ * gas - T-bill. $/hour = net / hours worked. Break-even is the drop share at which
+ * the net is zero; break-even at $25/h adds the pay for the hours worked. The
+ * verdict is by money: FARM when the net is positive and pays at least $25 an hour,
+ * THIN when the net is positive but pays less, SKIP when the net is negative.
+ * Withdrawal gas is not modelled; the exit step says so.
  */
 export function farmEconomics(
-  p: SnapshotProtocol,
+  implied: number,
+  tvl: number,
   age: number | null,
-): { capital: number; holdDays: number; gasUsd: number; totalCost: number } {
-  const capital = capitalFor(p);
+  model: ModelConstants = MODEL,
+): {
+  deposit: number;
+  holdDays: number;
+  weeks: number;
+  gas: number;
+  tbill: number;
+  drop: number;
+  net: number;
+  hours: number;
+  perHour: number;
+  breakeven: number;
+  breakeven25ph: number;
+  verdict: 'FARM' | 'THIN' | 'SKIP';
+} {
+  const deposit = model.farm_deposit_usd;
   const holdDays = holdDaysFor(age);
-  const gasUsd = 3 + (capital >= 150 ? 8 : 4) + (capital >= 150 ? 4 : 2) + 2 * Math.ceil(holdDays / 7);
-  return { capital, holdDays, gasUsd, totalCost: capital + gasUsd };
+  const weeks = Math.ceil(holdDays / 7);
+  const gas = 3 + 8 + 4 + 2 * weeks;
+  const tbill = deposit * model.tbill_rate * (holdDays / 365);
+  const drop = (implied * model.farm_drop_share * deposit) / tvl;
+  const net = drop - gas - tbill;
+  const hours = stepMinutes(holdDays).reduce((a, m) => a + m, 0) / 60;
+  const perHour = net / hours;
+  const breakeven = ((gas + tbill) * tvl) / (implied * deposit);
+  const breakeven25ph = ((gas + tbill + model.farm_pay_rate_usd_h * hours) * tvl) / (implied * deposit);
+  const verdict: 'FARM' | 'THIN' | 'SKIP' =
+    net > 0 && perHour >= model.farm_pay_rate_usd_h ? 'FARM' : net > 0 ? 'THIN' : 'SKIP';
+  return { deposit, holdDays, weeks, gas, tbill, drop, net, hours, perHour, breakeven, breakeven25ph, verdict };
 }
 
 /** The category's main action, in words a farmer can follow. */
@@ -964,51 +1258,75 @@ function secondActionFor(p: SnapshotProtocol, capital: number, chain: string): s
   return `Make a second, different qualifying action in the same app, such as a swap, a vote or a deposit on another chain ${name} supports.`;
 }
 
+/** A dollar figure with thousands separators, without relying on ICU locales. */
+function fmtUsd(n: number): string {
+  return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
 /**
- * A protocol's farm plan: seven steps, each an action with a cost and a time. The plan is
- * derived from the protocol's own record (category, chains, TVL, age), never from a
- * hand-written list of names.
+ * A protocol's farm plan: eight steps, each an action with a cost and a time. The plan
+ * is derived from the protocol's own record (category, chains, TVL, age), never from a
+ * hand-written list of names. Step 8 is the exit trigger: leave when the protocol's
+ * TVL falls below 70% of today's, or the drop window closes. The deposit is the
+ * model's $10,000 everywhere — the same deposit the economics price. Step 6 takes
+ * 5 minutes, not 10: the 5 minutes moved to step 8, so the plan's total work hours
+ * are exactly the hours the economics charge (work/metrics + work/farm).
  */
-export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
+export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStepSpec[] {
   const chain = chainOf(p);
-  const capital = capitalFor(p);
+  const capital = MODEL.farm_deposit_usd;
   const hold = holdDaysFor(age);
   const otherChain = p.chains.length > 1 ? p.chains[1]! : chain;
+  const minutes = stepMinutes(hold);
+  const tvl70 = Math.round(p.tvl_usd * 0.7);
   return [
     {
       text: `Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.`,
       cost: 'under $3 of gas for the first transaction',
       time: '5 minutes',
+      minutes: minutes[0]!,
     },
     {
       text: actionFor(p, capital, chain),
       cost: `$${capital} of capital and about $${capital >= 150 ? 8 : 4} of gas`,
       time: '15 minutes to set up',
+      minutes: minutes[1]!,
     },
     {
       text: secondActionFor(p, capital, chain),
       cost: `about $${capital >= 150 ? 4 : 2} of gas`,
       time: '10 minutes',
+      minutes: minutes[2]!,
     },
     {
       text: `Make one qualifying action each week, such as a deposit, a borrow, a swap or a vote, and spread it across ${chain}${otherChain !== chain ? ` and ${otherChain}` : ''} when the protocol runs on both.`,
       cost: 'about $2 of gas a week',
       time: '10 minutes a week',
+      minutes: minutes[3]!,
     },
     {
       text: `Hold the position for at least ${hold} days so the activity is counted in more than one snapshot.`,
       cost: `the $${capital} stays in the position`,
       time: `${hold} days`,
+      minutes: minutes[4]!,
     },
     {
       text: `Before you withdraw, open the protocol's own points or rewards page and claim only from the link it publishes.`,
       cost: 'no fee to check, and never pay to claim',
-      time: '10 minutes',
+      time: '5 minutes',
+      minutes: minutes[5]!,
     },
     {
       text: `Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.`,
       cost: 'nothing but the log',
       time: '5 minutes',
+      minutes: minutes[6]!,
+    },
+    {
+      text: `Exit when the protocol's TVL falls below 70% of today's $${fmtUsd(tvl70)} or the drop window closes; unwind in reverse order, starting with the last action you took. Exit gas is not modelled — check the chain's own fees when you unwind.`,
+      cost: 'no fee to check; exit gas not modelled',
+      time: '5 minutes',
+      minutes: minutes[7]!,
     },
   ];
 }
@@ -1050,17 +1368,25 @@ export function radarRow(row: BoardRow, onWatchlist: boolean): RadarRow {
     implied_value_usd: row.implied_value_usd,
     fitted_mcap_usd: row.model.fitted_mcap_usd,
     growth_multiplier: row.model.growth_multiplier,
-    maturity_multiplier: row.model.maturity_multiplier,
-    breadth_multiplier: row.model.breadth_multiplier,
     launch_probability: row.model.launch_probability,
     value_low_usd: row.model.value_low_usd,
     value_high_usd: row.model.value_high_usd,
+    value_low90_usd: row.model.value_low90_usd,
+    value_high90_usd: row.model.value_high90_usd,
     rank_low: row.model.rank_low,
     rank_high: row.model.rank_high,
-    total_cost_usd: row.model.total_cost_usd,
-    net_low_usd: row.model.net_low_usd,
-    value_cost_ratio: row.model.value_cost_ratio,
+    deposit_usd: row.model.deposit_usd,
+    drop_usd: row.model.drop_usd,
+    gas_usd: row.model.gas_usd,
+    tbill_charge_usd: row.model.tbill_charge_usd,
+    net_usd: row.model.net_usd,
+    net_per_hour_usd: row.model.net_per_hour_usd,
+    breakeven_drop_share: row.model.breakeven_drop_share,
+    breakeven_25ph_drop_share: row.model.breakeven_25ph_drop_share,
+    hours_worked: row.model.hours_worked,
+    hold_days: row.model.hold_days,
     verdict: row.model.verdict,
+    farm_steps: row.farm_steps,
   };
 }
 
@@ -1070,7 +1396,7 @@ export function buildRadar(
   model: ModelConstants = MODEL,
   coverage: Coverage = 'all',
 ): { board: BoardRow[]; radar: RadarData } {
-  const { board, fit, audit } = buildBoard(snapshot, model, coverage);
+  const { board, fit, audit, ledger } = buildBoard(snapshot, model, coverage);
   const live = liveRows(snapshot);
   const early = board.filter((r) => !snapshot.watchlist.includes(r.slug)).length;
   const total = board.reduce((sum, r) => sum + r.implied_value_usd, 0);
@@ -1086,6 +1412,7 @@ export function buildRadar(
     else if (r.model.verdict === 'THIN') verdictCounts.thin++;
     else verdictCounts.skip++;
   }
+  const totalHoursWorked = Math.round(board.reduce((sum, r) => sum + r.model.hours_worked, 0) * 10) / 10;
   const radar: RadarData = {
     as_of: snapshot.as_of,
     source: snapshot.source,
@@ -1101,6 +1428,8 @@ export function buildRadar(
     median_implied_usd: medianImplied,
     fit,
     verdict_counts: verdictCounts,
+    total_hours_worked: totalHoursWorked,
+    ledger,
     audit,
     rows: board.map((r) => radarRow(r, snapshot.watchlist.includes(r.slug))),
     live,
