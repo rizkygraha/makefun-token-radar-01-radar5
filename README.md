@@ -35,12 +35,12 @@ snapshot (`input/snapshot.json`: 758 protocols at or above $5M TVL, fetched
   leave-one-out ×2.74 (76 comps) and ×3.11 (92) vs ×4.38 and ×5.55 for a flat
   category-median multiple; walk-forward ×2.01 (median split) and ×1.99
   (tertile split) on the 92 set vs ×5.05 and ×4.52 flat. The launch probability
-  is a logistic regression fitted at run time (AUC 0.786 train / 0.775 test) on
-  age, growth, chains and the category token rate — the share of a protocol's
-  own category that already has a token. log TVL was tested and removed:
-  dropping it improves both Brier scores (LOO 0.211, ten-fold 0.214) while AUC
-  moves 0.7752 → 0.7745. Brier: LOO 0.211 (gate 0.22, passes), ten-fold 0.214
-  (gate 0.21, misses by 0.004 — stated, not hidden). Each row carries a value
+  is a logistic regression fitted at run time (AUC 0.8199 train / 0.8030 test) on
+  age, growth, chains, the category token rate and the cohort share — the share
+  of a protocol's own age band that already has a token. log TVL was tested and
+  removed: adding it worsens both Brier scores (LOO 0.197657 → 0.197845,
+  ten-fold 0.200076 → 0.201059). Brier: LOO 0.197657 (gate 0.22, passes),
+  ten-fold 0.200076 (gate 0.21, passes by 0.0099). Each row carries a value
   band from leave-one-out residuals on the fitted value — [p25, p75] covers
   51.3% of held-out caps, [p10, p90] covers 81.6% — and a rank range from 200
   bootstrap refits of the curve. The old bootstrap value band covered 15.8% and
@@ -48,9 +48,9 @@ snapshot (`input/snapshot.json`: 758 protocols at or above $5M TVL, fetched
 - **Farm economics, by money**: each row's farm is a $10,000 deposit. Drop =
   implied × 7% × $10,000 / TVL; net = drop − gas − the 4% T-bill charge on the
   deposit over the hold; $/hour = net / hours worked. Verdict by money: FARM
-  when the net is positive and pays at least $25 an hour (71 rows), THIN when
-  the net is positive but pays less (38), SKIP when the net is negative (89).
-  The net is negative on 106 of 198 rows — for the biggest protocols the drop
+  when the net is positive and pays at least $25 an hour (59 rows), THIN when
+  the net is positive but pays less (37), SKIP when the net is negative (102).
+  The net is negative on 102 of 198 rows — for the biggest protocols the drop
   is smaller than the gas plus the T-bill charge, because the drop is the
   implied value times the deposit over a very large TVL. The top 10 by implied
   hold 0 FARM. The farm plan is 8 steps per protocol (7 actions plus an exit
@@ -58,9 +58,9 @@ snapshot (`input/snapshot.json`: 758 protocols at or above $5M TVL, fetched
   closes), each with a cost and a time; total work is 356.5 hours for 198 farms
   (mean 1.80 h), computed from the step times. Withdrawal gas is not modelled;
   the drawer says so.
-- **Dashboard**: dark, no-network static page. KPI strip (198 ranked, $1.03B
-  total implied, 71 FARM, LOO ×2.74, Brier 0.211, 356.5 h), a ledger accounting
-  for all 758 protocols in six groups, and an integrity strip (board recomputed,
+- **Dashboard**: dark, no-network static page. KPI strip (198 ranked, $881.1M
+  total implied, 59 FARM, LOO ×2.74, Brier 0.198, 356.5 h), a ledger accounting
+  for all 758 protocols in seven groups, and an integrity strip (board recomputed,
   ranks ordered, totals equal, checksum = main.ts, watchlist 40/40, ledger
   758/758). Sortable and filterable board with net $, $/hour and verdict
   columns, per-protocol detail drawer with the full model breakdown, the
@@ -86,11 +86,12 @@ board instead.
 
 ## Top 10
 
-1. Veda $47.9M · 2. USDD $39.7M · 3. CIAN Yield Layer $28.0M ·
-4. Steakhouse Financial $27.4M · 5. Bittensor dTAO $25.4M ·
-6. BitFi Basis $22.9M · 7. Upshift $22.8M · 8. Figure Markets Prime $22.0M ·
-9. Plume Vaults $18.5M · 10. Polymarket International $18.5M.
-Total implied board $1.03B, median $2.96M.
+1. Veda $31.1M · 2. USDD $27.6M · 3. Defi Saver Asset Management $25.0M ·
+4. Polymarket International $24.0M · 5. Lightning Network $22.6M ·
+6. Bittensor dTAO $22.3M · 7. CIAN Yield Layer $21.5M ·
+8. Figure Markets Prime $19.4M · 9. Steakhouse Financial $18.4M ·
+10. BitFi Basis $18.1M.
+Total implied board $881.1M, median $2.56M.
 
 ## Files
 
@@ -107,7 +108,11 @@ Total implied board $1.03B, median $2.96M.
 
 A protocol "records no token" in the snapshot — that is not proof it has no token.
 An implied value is the model's claim, never a promise of a token or a price.
-The ten-fold Brier misses its 0.21 gate by 0.004; the dashboard says so.
+The ten-fold Brier passes its 0.21 gate (0.200076, margin 0.0099); what remains
+open is the literal top-10 gate — 4 of the top 10 net a small positive, but
+none pays $25/h, so none is a FARM — and the odds control row, which "helps"
+by about 0.0007, so the growth signal in the odds model is small and
+ambiguous; the dashboard states both.
 
 ---
 

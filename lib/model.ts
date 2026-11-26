@@ -27,8 +27,8 @@
 //     (+0.80 std). Brier, measured off-line and embedded with its source: LOO
 //     0.198, ten-fold 0.200, base rate 0.248.
 //   - the value band is built from leave-one-out residuals, not from bootstrap refits:
-//     [p25, p75] of the LOO log-residuals covers 50.0% of held-out caps and [p10, p90]
-//     covers 78.9% on the 76-comparable set (the old bootstrap band covered 15.8% and
+//     [p25, p75] of the LOO log-residuals covers 51.3% of held-out caps and [p10, p90]
+//     covers 81.6% on the 76-comparable set (the old bootstrap band covered 15.8% and
 //     is not printed). The multipliers and the coverage are computed at run time from
 //     this snapshot and reported on the dashboard. The bootstrap (200 seeded refits)
 //     is kept only for the rank range.
