@@ -1343,74 +1343,78 @@ export function farmEconomics(
   return { deposit, holdDays, weeks, gas, tbill, drop, net, hours, perHour, breakeven, breakeven25ph, breakevenOdds, verdict };
 }
 
-/** The category's main action, in words a farmer can follow. */
+/** The category's main action, in words a farmer can follow. Terse on purpose:
+ *  every farm step (action + cost + time) stays within 100 characters so the
+ *  dashboard drawer shows the whole 8-step plan without scrolling. */
 function actionFor(p: SnapshotProtocol, capital: number, chain: string): string {
   const c = (p.category ?? '').toLowerCase();
   const name = p.name;
+  const k = `$${capital / 1000}k`;
   if (c.includes('lend') || c.includes('cdp') || c.includes('collateral'))
-    return `Supply $${capital} of USDC to ${name} on ${chain} and keep the position open.`;
+    return `Supply ${k} USDC to ${name} on ${chain}.`;
   if (c.includes('dex') || c.includes('leveraged farm'))
-    return `Provide $${capital} of liquidity to ${name}'s main pool on ${chain} and keep the position open.`;
+    return `Add ${k} liquidity to ${name} on ${chain}.`;
   if (c.includes('yield') || c.includes('farm'))
-    return `Deposit $${capital} of USDC into ${name}'s highest-TVL vault on ${chain} and keep the shares.`;
+    return `Deposit ${k} USDC in a ${name} vault on ${chain}.`;
   if (c.includes('bridge'))
-    return `Bridge $${capital} of USDC to ${chain} through ${name} and use the bridged funds in its app.`;
+    return `Bridge ${k} USDC via ${name} to ${chain}.`;
   if (c.includes('staking') || c.includes('restak'))
-    return `Stake $${capital} of the chain's staking asset through ${name} and keep the receipt token.`;
+    return `Stake ${k} via ${name} on ${chain}.`;
   if (c.includes('perpetual') || c.includes('derivative') || c.includes('options'))
-    return `Deposit $${capital} of USDC as margin on ${name} and open one small hedged position.`;
+    return `Deposit ${k} margin on ${name}, ${chain}.`;
   if (c.includes('prediction'))
-    return `Fund $${capital} and place one market position on ${name}.`;
+    return `Fund ${k}, place one market on ${name}.`;
   if (c.includes('curator') || c.includes('allocator') || c.includes('risk'))
-    return `Deposit $${capital} into a ${name} vault on ${chain} and keep the shares.`;
+    return `Deposit ${k} in a ${name} vault on ${chain}.`;
   if (c.includes('stable') || c.includes('algo-stables'))
-    return `Mint or deposit $${capital} of the stable asset through ${name} on ${chain}.`;
+    return `Mint or deposit ${k} stable via ${name}, ${chain}.`;
   if (c.includes('rwa'))
-    return `Mint $${capital} of the protocol's yield-bearing asset on ${chain} and hold it.`;
+    return `Mint ${k} of ${name} yield asset, ${chain}.`;
   if (c.includes('insurance'))
-    return `Buy $${capital} of cover from ${name} on ${chain} and keep the policy active.`;
+    return `Buy ${k} cover from ${name} on ${chain}.`;
   if (c.includes('launchpad'))
-    return `Stake $${capital} to join ${name}'s next launch allocation on ${chain}.`;
+    return `Stake ${k} for a ${name} launch, ${chain}.`;
   if (c.includes('payment'))
-    return `Route $${capital} of payments through ${name} on ${chain} and keep the receipts.`;
+    return `Route ${k} payments via ${name}, ${chain}.`;
   if (c.includes('ai agent') || c.includes('decentralized ai'))
-    return `Use $${capital} to run an agent task on ${name} on ${chain} and keep the run receipt.`;
+    return `Run a ${k} agent task on ${name}, ${chain}.`;
   if (c.includes('nft'))
-    return `List or trade one item worth about $${capital} on ${name} on ${chain}.`;
+    return `Trade a ~${k} item on ${name}, ${chain}.`;
   if (c.includes('index'))
-    return `Buy $${capital} of the ${name} index token on ${chain} and hold it.`;
+    return `Buy ${k} of the ${name} index, ${chain}.`;
   if (c.includes('privacy'))
-    return `Shield $${capital} through ${name} on ${chain} and keep the proof of the deposit.`;
-  return `Deposit $${capital} of USDC into ${name} on ${chain} and keep the position open.`;
+    return `Shield ${k} via ${name} on ${chain}.`;
+  return `Deposit ${k} USDC in ${name} on ${chain}.`;
 }
 
-/** The category's second, different qualifying action, so the farm is not one click. */
+/** The category's second, different qualifying action, so the farm is not one click.
+ *  Terse like actionFor: every step stays within 100 characters in full. */
 function secondActionFor(p: SnapshotProtocol, capital: number, chain: string): string {
   const c = (p.category ?? '').toLowerCase();
   const name = p.name;
   if (c.includes('lend') || c.includes('cdp') || c.includes('collateral'))
-    return `Borrow $${Math.round(capital / 2)} against the supply on ${name}, then repay it the same week.`;
+    return `Borrow $${Math.round(capital / 2000)}k, repay same week.`;
   if (c.includes('dex') || c.includes('leveraged farm'))
-    return `Swap $${Math.round(capital / 2)} through ${name}'s router on ${chain} so the wallet shows trading activity.`;
+    return `Swap $${Math.round(capital / 2000)}k via ${name} router.`;
   if (c.includes('staking') || c.includes('restak'))
-    return `Delegate a second stake through ${name} to a different validator set it offers.`;
+    return `Delegate a second stake via ${name}.`;
   if (c.includes('perpetual') || c.includes('derivative') || c.includes('options'))
-    return `Close the hedge on ${name} and open a fresh one in the opposite direction.`;
+    return `Close hedge, open fresh opposite.`;
   if (c.includes('prediction'))
-    return `Settle one market on ${name} and open a position in a second market.`;
+    return `Settle one market, open a second.`;
   if (c.includes('curator') || c.includes('allocator') || c.includes('risk'))
-    return `Reallocate part of the vault deposit into a second ${name} vault with a different risk profile.`;
+    return `Move part to a second ${name} vault.`;
   if (c.includes('stable') || c.includes('algo-stables'))
-    return `Swap half the stable position for the paired asset on ${name} and swap it back.`;
+    return `Swap half stable, swap back.`;
   if (c.includes('rwa'))
-    return `Redeem a small part of the ${name} position and mint again to show an active holder.`;
+    return `Redeem a little, mint again.`;
   if (c.includes('launchpad'))
-    return `Vote on the next ${name} launch proposal with the staked allocation.`;
+    return `Vote on next ${name} launch.`;
   if (c.includes('yield') || c.includes('farm'))
-    return `Move $${Math.round(capital / 2)} into a second ${name} vault on another chain it supports.`;
+    return `Move $${Math.round(capital / 2000)}k to a second ${name} vault.`;
   if (c.includes('bridge'))
-    return `Bridge a second, smaller amount back through ${name} so the wallet shows two-way use.`;
-  return `Make a second, different qualifying action in the same app, such as a swap, a vote or a deposit on another chain ${name} supports.`;
+    return `Bridge a smaller amount back.`;
+  return `Second action: swap, vote or deposit.`;
 }
 
 /** A dollar figure with thousands separators, without relying on ICU locales. */
@@ -1426,6 +1430,9 @@ function fmtUsd(n: number): string {
  * model's $10,000 everywhere — the same deposit the economics price. Step 6 takes
  * 5 minutes, not 10: the 5 minutes moved to step 8, so the plan's total work hours
  * are exactly the hours the economics charge (work/metrics + work/farm).
+ * Steps are written terse: each full step (action + cost + time) is at most 100
+ * characters, so the dashboard drawer shows all 8 in one viewport. The minutes
+ * (stepMinutes) and gas behind each step are unchanged — only the wording is shorter.
  */
 export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStepSpec[] {
   const chain = chainOf(p);
@@ -1436,51 +1443,51 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStepSpec
   const tvl70 = Math.round(p.tvl_usd * 0.7);
   return [
     {
-      text: `Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.`,
-      cost: 'under $3 of gas for the first transaction',
-      time: '5 minutes',
+      text: `Fresh wallet, seed offline.`,
+      cost: 'under $3 gas',
+      time: '5 min',
       minutes: minutes[0]!,
     },
     {
       text: actionFor(p, capital, chain),
-      cost: `$${capital} of capital and about $${capital >= 150 ? 8 : 4} of gas`,
-      time: '15 minutes to set up',
+      cost: `$${capital >= 150 ? 8 : 4} gas`,
+      time: '15 min',
       minutes: minutes[1]!,
     },
     {
       text: secondActionFor(p, capital, chain),
-      cost: `about $${capital >= 150 ? 4 : 2} of gas`,
-      time: '10 minutes',
+      cost: `$${capital >= 150 ? 4 : 2} gas`,
+      time: '10 min',
       minutes: minutes[2]!,
     },
     {
-      text: `Make one qualifying action each week, such as a deposit, a borrow, a swap or a vote, and spread it across ${chain}${otherChain !== chain ? ` and ${otherChain}` : ''} when the protocol runs on both.`,
-      cost: 'about $2 of gas a week',
-      time: '10 minutes a week',
+      text: `Weekly action on ${chain}${otherChain !== chain ? ` + ${otherChain}` : ''}.`,
+      cost: '$2 gas/week',
+      time: '10 min/week',
       minutes: minutes[3]!,
     },
     {
-      text: `Hold the position for at least ${hold} days so the activity is counted in more than one snapshot.`,
-      cost: `the $${capital} stays in the position`,
+      text: `Hold at least ${hold} days.`,
+      cost: `$${capital / 1000}k stays in position`,
       time: `${hold} days`,
       minutes: minutes[4]!,
     },
     {
-      text: `Before you withdraw, open the protocol's own points or rewards page and claim only from the link it publishes.`,
-      cost: 'no fee to check, and never pay to claim',
-      time: '5 minutes',
+      text: `Check the points page; claim only via its link.`,
+      cost: 'free to check',
+      time: '5 min',
       minutes: minutes[5]!,
     },
     {
-      text: `Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.`,
-      cost: 'nothing but the log',
-      time: '5 minutes',
+      text: `Log wallet, dates, every tx.`,
+      cost: 'free',
+      time: '5 min',
       minutes: minutes[6]!,
     },
     {
-      text: `Exit when the protocol's TVL falls below 70% of today's $${fmtUsd(tvl70)} or the drop window closes; unwind in reverse order, starting with the last action you took. Exit gas is not modelled — check the chain's own fees when you unwind.`,
-      cost: 'no fee to check; exit gas not modelled',
-      time: '5 minutes',
+      text: `Exit if TVL <70% of $${fmtUsd(tvl70)} or window closes.`,
+      cost: 'exit gas not modelled',
+      time: '5 min',
       minutes: minutes[7]!,
     },
   ];
